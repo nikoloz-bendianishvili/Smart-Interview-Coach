@@ -23,8 +23,8 @@ public class CodingChallenge {
     private Long id;
 
     @OneToOne
-    @JoinColumn(name = "question_id", nullable = false)
-    private Question questionId;
+    @JoinColumn(name = "question", nullable = false)
+    private Question question;
 
     @Column(nullable = false, columnDefinition = "TEXT")
     private String starterCode;
@@ -32,6 +32,6 @@ public class CodingChallenge {
     @Column(columnDefinition = "TEXT")
     private String referenceSolution;
 
-    @OneToMany(mappedBy = "codingChallenge", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "codingChallenge", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<TestCase> testCases;
 }

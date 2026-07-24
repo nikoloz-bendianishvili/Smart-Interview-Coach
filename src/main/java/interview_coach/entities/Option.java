@@ -21,8 +21,8 @@ public class Option {
     private Long id;
 
     @OneToOne
-    @JoinColumn(name = "question_id", nullable = false, unique = true)
-    private Question questionId;
+    @JoinColumn(name = "question", nullable = false, unique = true)
+    private Question question;
 
     @Column(nullable = false)
     private Integer correctOption;

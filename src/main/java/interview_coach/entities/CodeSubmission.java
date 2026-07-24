@@ -1,5 +1,6 @@
 package interview_coach.entities;
 
+import interview_coach.enums.GradingStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -36,6 +37,8 @@ public class CodeSubmission {
 
     @Column(columnDefinition = "TEXT")
     private String executionOutput;
+
+    private GradingStatus status;
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)

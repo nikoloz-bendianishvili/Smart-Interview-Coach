@@ -49,6 +49,10 @@ public class Session {
     @Enumerated(EnumType.STRING)
     private SessionStatus status;
 
+    private Integer numOfQuestions;
+
+    private Integer timeLimitMinutes;
+
     @CreationTimestamp
     @Column(nullable = false)
     private LocalDateTime startTime;

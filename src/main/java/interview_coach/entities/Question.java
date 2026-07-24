@@ -41,6 +41,14 @@ public class Question {
     @Column(nullable = false)
     private Integer timeLimit;
 
+    @OneToOne(mappedBy = "question", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Option option;
+
+    @OneToOne(mappedBy = "question", cascade = CascadeType.ALL, orphanRemoval = true)
+    private CodingChallenge codingChallenge;
+
+    private Integer score;
+
     @Column(columnDefinition = "TEXT")
     private String explanation;
 }

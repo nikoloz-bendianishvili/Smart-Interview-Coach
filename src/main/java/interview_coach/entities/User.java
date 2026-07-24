@@ -45,7 +45,11 @@ public class User {
 
     private String targetRole;
 
-    private boolean isActive;
+    private boolean isBanned;
+
+    private LocalDateTime banExpirationTime;
+
+    private boolean isVerified;
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
