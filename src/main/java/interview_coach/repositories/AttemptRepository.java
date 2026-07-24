@@ -11,6 +11,8 @@ public interface AttemptRepository extends JpaRepository<Attempt, Long> {
 
     List<Attempt> findByUserId(Long userId);
 
+    List<Attempt> findBySessionQuestion_Session_Id(Long sessionId);
+
     List<Attempt> findByUserIdAndSessionQuestion_Question_Topic_Id(Long userId, Long topicId);
 }
 

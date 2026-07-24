@@ -42,6 +42,8 @@ public class Attempt {
 
     private Integer timeTakenSeconds;
 
+    private boolean wasSkipped;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

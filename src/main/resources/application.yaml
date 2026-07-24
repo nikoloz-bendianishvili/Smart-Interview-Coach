@@ -1,3 +1,17 @@
 spring:
   application:
     name: interview-coach
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION:86400000}
+
+brevo:
+  api:
+    key: ${BREVO_API_KEY}
+
+sender: ${SENDER_EMAIL}
+
+app:
+  frontend:
+    url: ${FRONTEND_URL:http://localhost:8080}
