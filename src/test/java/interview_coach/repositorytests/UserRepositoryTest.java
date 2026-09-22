@@ -40,9 +40,9 @@ public class UserRepositoryTest {
 
         userRepository.save(u);
 
-        User found = userRepository.findByEmail("alice@example.com");
-        assertThat(found).isNotNull();
-        assertThat(found.getEmail()).isEqualTo("alice@example.com");
+        Optional<User> found = userRepository.findByEmail("alice@example.com");
+        assertThat(found).isPresent();
+        assertThat(found.get().getEmail()).isEqualTo("alice@example.com");
     }
 
     @Test

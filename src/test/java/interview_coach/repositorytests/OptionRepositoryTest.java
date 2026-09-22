@@ -49,7 +49,7 @@ public class OptionRepositoryTest {
         questionRepository.save(q);
 
         Option o = Option.builder()
-                .questionId(q)
+                .question(q)
                 .correctOption(1)
                 .option1("A")
                 .option2("B")
@@ -59,7 +59,7 @@ public class OptionRepositoryTest {
 
         optionRepository.save(o);
 
-        assertThat(optionRepository.findByQuestionId(q)).isPresent();
+        assertThat(optionRepository.findByQuestionId(q.getId())).isPresent();
     }
 }
 

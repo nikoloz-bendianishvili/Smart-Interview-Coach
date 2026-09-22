@@ -13,6 +13,7 @@ import interview_coach.enums.QuestionType;
 import interview_coach.InterviewCoachApplication;
 import interview_coach.enums.SessionStatus;
 import interview_coach.enums.SessionType;
+import interview_coach.enums.AttemptStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -61,7 +62,7 @@ public class CodeSubmissionRepositoryTest {
 
     @Test
     void saveAndFindByAttempt() {
-        User u = User.builder().firstName("A").lastName("B").webName("u4").email("u4@example.com").passwordHash("p").role(Role.USER).isActive(true).build();
+        User u = User.builder().firstName("A").lastName("B").webName("u4").email("u4@example.com").passwordHash("p").role(Role.USER).build();
         userRepository.save(u);
 
         Session s = Session.builder()
@@ -87,7 +88,7 @@ public class CodeSubmissionRepositoryTest {
         SessionQuestion sq = SessionQuestion.builder().session(s).question(q).orderIndex(1).build();
         sessionQuestionRepository.save(sq);
 
-        Attempt a = Attempt.builder().sessionQuestion(sq).user(u).build();
+        Attempt a = Attempt.builder().sessionQuestion(sq).user(u).status(AttemptStatus.PENDING).build();
         attemptRepository.save(a);
 
         CodeSubmission cs = CodeSubmission.builder().attempt(a).sourceCode("//code").passedTestCount(1).totalTestCount(1).build();

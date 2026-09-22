@@ -173,7 +173,7 @@ public class SessionService {
         List<Attempt> attempts = attemptRepository.findBySessionQuestion_Session_Id(session.getId());
 
         return attempts.stream()
-                .filter(attempt -> !attempt.isWasSkipped())
+                .filter(attempt -> attempt.getStatus() != AttemptStatus.SKIPPED)
                 .mapToInt(attempt -> attempt.getScore() != null ? attempt.getScore() : 0)
                 .sum();
     }

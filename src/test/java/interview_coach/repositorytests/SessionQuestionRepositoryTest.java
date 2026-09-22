@@ -45,7 +45,7 @@ public class SessionQuestionRepositoryTest {
 
     @Test
     void saveAndFindBySession() {
-        User u = User.builder().firstName("U").lastName("L").webName("u2").email("u2@example.com").passwordHash("p").role(Role.USER).isActive(true).build();
+        User u = User.builder().firstName("U").lastName("L").webName("u2").email("u2@example.com").passwordHash("p").role(Role.USER).build();
         userRepository.save(u);
 
         Session s = Session.builder()

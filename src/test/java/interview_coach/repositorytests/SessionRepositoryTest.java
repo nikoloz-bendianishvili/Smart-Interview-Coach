@@ -32,7 +32,7 @@ public class SessionRepositoryTest {
 
     @Test
     void saveAndFindByUserAndStatus() {
-        User u = User.builder().firstName("U").lastName("L").webName("u1").email("u1@example.com").passwordHash("p").role(Role.USER).isActive(true).build();
+        User u = User.builder().firstName("U").lastName("L").webName("u1").email("u1@example.com").passwordHash("p").role(Role.USER).build();
         userRepository.save(u);
 
         Session s = Session.builder().user(u).sessionType(SessionType.FREE_MOCK).status(SessionStatus.IN_PROGRESS).build();
