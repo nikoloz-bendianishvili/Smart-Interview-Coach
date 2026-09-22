@@ -5,11 +5,14 @@ import interview_coach.enums.AttemptStatus;
 import interview_coach.enums.GradingStatus;
 import interview_coach.enums.QuestionType;
 import interview_coach.enums.SessionType;
+import interview_coach.events.CodeSubmissionCreatedEvent;
+import interview_coach.events.VoiceAnswerCreatedEvent;
 import interview_coach.exceptions.OptionNotFoundException;
 import interview_coach.exceptions.SessionQuestionNotFoundException;
 import interview_coach.repositories.*;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -23,8 +26,7 @@ public class AttemptService {
     private final SessionQuestionRepository sessionQuestionRepository;
     private final CodeSubmissionRepository codeSubmissionRepository;
     private final VoiceAnswerRepository voiceAnswerRepository;
-    private final AiGradingService aiGradingService;
-    private final JudgeService judgeService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public Attempt submitMCQAttempt(Long sessionQuestionId, User user, Integer selectedOption, int timeTakenSeconds) {
@@ -69,7 +71,7 @@ public class AttemptService {
                 .build();
         codeSubmissionRepository.save(submission);
 
-        judgeService.gradeSubmission(submission.getId());
+        eventPublisher.publishEvent(new CodeSubmissionCreatedEvent(submission.getId()));
 
         return attempt;
     }
@@ -95,7 +97,7 @@ public class AttemptService {
                 .build();
         voiceAnswerRepository.save(voiceAnswer);
 
-        aiGradingService.gradeAnswer(voiceAnswer.getId());
+        eventPublisher.publishEvent(new VoiceAnswerCreatedEvent(voiceAnswer.getId()));
 
         return attempt;
     }

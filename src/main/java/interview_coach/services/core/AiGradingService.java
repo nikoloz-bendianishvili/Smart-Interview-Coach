@@ -7,18 +7,21 @@ import com.anthropic.models.messages.StructuredMessageCreateParams;
 import interview_coach.entities.Attempt;
 import interview_coach.entities.Question;
 import interview_coach.entities.VoiceAnswer;
+import interview_coach.enums.AttemptStatus;
 import interview_coach.enums.GradingStatus;
+import interview_coach.events.VoiceAnswerCreatedEvent;
 import interview_coach.exceptions.VoiceAnswerNotFoundException;
 import interview_coach.repositories.AttemptRepository;
 import interview_coach.repositories.VoiceAnswerRepository;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AiGradingService {
@@ -35,8 +38,8 @@ public class AiGradingService {
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void gradeAnswer(Long voiceAnswerId) {
-        VoiceAnswer voiceAnswer = voiceAnswerRepository.findById(voiceAnswerId)
+    public void gradeAnswer(VoiceAnswerCreatedEvent event) {
+        VoiceAnswer voiceAnswer = voiceAnswerRepository.findById(event.voiceAnswerId())
                 .orElseThrow(() -> new VoiceAnswerNotFoundException("Voice answer not found"));
 
         try {
@@ -54,11 +57,17 @@ public class AiGradingService {
             Attempt attempt = voiceAnswer.getAttempt();
             int scaledScore = (int) Math.round((result.score() / 10.0) * question.getScore());
             attempt.setScore(scaledScore);
+            attempt.setStatus(AttemptStatus.GRADED);
             attemptRepository.save(attempt);
 
         } catch (Exception e) {
+            log.error("Failed to grade voice answer {}: {}", voiceAnswer.getId(), e.getMessage());
             voiceAnswer.setGradingStatus(GradingStatus.FAILED);
             voiceAnswerRepository.save(voiceAnswer);
+
+            Attempt attempt = voiceAnswer.getAttempt();
+            attempt.setStatus(AttemptStatus.FAILED);
+            attemptRepository.save(attempt);
         }
     }
 
