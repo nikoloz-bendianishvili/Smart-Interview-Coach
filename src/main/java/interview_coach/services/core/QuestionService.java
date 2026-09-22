@@ -81,23 +81,32 @@ public class QuestionService {
     }
 
     public List<Question> getQuestionsByTopicId(Long topicId) {
-        return questionRepository.findByTopicId(topicId);
+        return questionRepository.findByTopicIdAndActiveTrue(topicId);
     }
 
     public List<Question> getByDifficulty(Difficulty difficulty) {
-        return questionRepository.findByDifficulty(difficulty);
+        return questionRepository.findByDifficultyAndActiveTrue(difficulty);
     }
 
     public List<Question> getByQuestionType(QuestionType questionType) {
-        return questionRepository.findByQuestionType(questionType);
+        return questionRepository.findByQuestionTypeAndActiveTrue(questionType);
     }
 
     public List<Question> getByTopicIdAndQuestionType(Long topicId, QuestionType questionType) {
-        return questionRepository.findByTopicIdAndQuestionType(topicId, questionType);
+        return questionRepository.findByTopicIdAndQuestionTypeAndActiveTrue(topicId, questionType);
     }
 
     public Option getOptionsByQuestionId(Long questionId) {
         return optionRepository.findByQuestionId(questionId)
                 .orElseThrow(() -> new OptionNotFoundException("No options found for question id: " + questionId));
+    }
+
+    public Question getQuestionById(Long questionId) {
+        return questionRepository.findById(questionId)
+                .orElseThrow(() -> new QuestionNotFoundException("Question not found with id: " + questionId));
+    }
+
+    public List<Question> getAllQuestions() {
+        return questionRepository.findAll();
     }
 }

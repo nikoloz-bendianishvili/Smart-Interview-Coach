@@ -24,6 +24,16 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
 
     long countByTopicIdAndQuestionType(Long topicId, QuestionType questionType);
 
+    long countByTopicId(Long topicId);
+
+    List<Question> findByTopicIdAndActiveTrue(Long topicId);
+
+    List<Question> findByDifficultyAndActiveTrue(Difficulty difficulty);
+
+    List<Question> findByQuestionTypeAndActiveTrue(QuestionType questionType);
+
+    List<Question> findByTopicIdAndQuestionTypeAndActiveTrue(Long topicId, QuestionType questionType);
+
     @Query(value = "SELECT * FROM questions WHERE topic_id = :topicId AND question_type = :questionType AND active = true " +
             "ORDER BY RAND() LIMIT :limit", nativeQuery = true)
     List<Question> findRandomByTopicAndType(@Param("topicId") Long topicId, @Param("questionType") String questionType, @Param("limit") int limit);
@@ -34,6 +44,6 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
 
     long countByQuestionType(QuestionType questionType);
 
-    @Query(value = "SELECT * FROM questions WHERE question_type = :questionType ORDER BY RAND() LIMIT :limit", nativeQuery = true)
+    @Query(value = "SELECT * FROM questions WHERE question_type = :questionType AND active = true ORDER BY RAND() LIMIT :limit", nativeQuery = true)
     List<Question> findRandomByType(@Param("questionType") String questionType, @Param("limit") int limit);
 }

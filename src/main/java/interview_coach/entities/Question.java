@@ -49,6 +49,7 @@ public class Question {
 
     private Integer score;
 
+    @Builder.Default
     @Column(nullable = false)
     private boolean active = true;
 
