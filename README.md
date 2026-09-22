@@ -72,6 +72,25 @@ time limit for real interviews (mixing coding and open-ended questions at a fixe
 either for free mock. `AttemptService` enforces ownership, session state, and "not already answered"
 before accepting a submission.
 
+**Session deadlines are real and server-enforced**, not just numbers stored for display. Every
+session gets a deadline the moment it starts - 110% of the chosen time for Real Interview, 150%
+for Free Mock, 200% of the questions' summed time budget for Custom Practice (multipliers
+configurable). Miss it and the session closes automatically, whether you ever make another request
+or not: every access re-checks the deadline, and a background sweep (`SessionSweepService`) catches
+the case where a user just walks away and never comes back. A session that hits its deadline (or
+gets completed manually) while a coding/open-ended answer is still grading doesn't get stuck or
+rejected - it moves to an `AWAITING_GRADING` state (202 response) and finishes on its own once the
+last grade lands, with no client action required.
+
+**Real Interview is strictly sequential.** Unlike the other two types, it reveals only the current
+question at a time (`GET /api/sessions/{id}/current-question`) and rejects answering or giving up
+out of turn - Free Mock and Custom Practice remain unordered, full question list up front.
+
+**Voice-answer timing is server-recorded, not client-reported.** A pair of endpoints
+(`.../voice/start`, `.../voice/stop`) let the client mark when a voice recording begins and ends;
+the server computes `timeTakenSeconds` from its own clock rather than trusting whatever the device
+sends. A plain typed answer (these endpoints never called) is unaffected.
+
 **Async grading** is the part worth reading closely. `JudgeService` (code) and `AiGradingService`
 (open-ended) both grade off the request thread, using:
 
@@ -89,9 +108,12 @@ The event is published *inside* the transaction that creates the `CodeSubmission
 row, but the listener only fires *after that transaction commits* - so grading can never race ahead
 of the row it depends on and query a row that isn't there yet. Each grader is wrapped so a failure
 (a timed-out external call, a malformed response) can never leave an `Attempt` stuck at `PENDING`
-forever - `SessionService.completeSession` explicitly refuses to close a session with any pending
-attempt, so a stuck attempt would otherwise permanently block that session from ever completing.
-On any exception, the grader marks the record `FAILED` and moves on rather than propagating.
+forever - it's marked `FAILED` and the grader moves on rather than propagating the exception. Each
+grader also nudges its parent session toward completion afterward (`finalizeIfGradingComplete`),
+so an `AWAITING_GRADING` session doesn't wait around once its last attempt has actually resolved;
+`SessionSweepService` is the guaranteed backstop for the rare case both graders miss that handoff,
+and separately reclaims any attempt that's been stuck `PENDING` too long (e.g. the app restarted
+mid-grade).
 
 ## Running without Docker
 
@@ -118,13 +140,17 @@ schema work beyond creating the empty database.
 
 ## Testing
 
-90+ tests across three layers, all against an in-memory H2 database:
+120+ tests across three layers, all against an in-memory H2 database:
 
 - **Repository tests** (`src/test/java/interview_coach/repositorytests`) - full
   `@SpringBootTest` + `@Transactional` integration tests (auto-rollback), not sliced
   `@DataJpaTest`s, including the native `RAND()`-based random-question-selection queries.
 - **Service tests** (`.../servicetests`) - Mockito unit tests, notably covering the session
-  question-selection algorithm (`SessionService.startSession`) and the async event-publishing
+  question-selection algorithm and deadline math (`SessionServiceStartTest`,
+  `SessionServiceDeadlineTest`), the REAL_INTERVIEW ordering guard and voice-timing sequencing
+  (`AttemptServiceOwnershipTest`, `AttemptServiceVoiceTimingTest`), the scheduled sweep
+  (`SessionSweepServiceTest` plus a real-Spring-context `SessionSweepServiceIntegrationTest` for
+  the cross-repository finalization behavior a mock can't prove), and the async event-publishing
   contract.
 - **Controller tests** (`.../controllertests`) - `@WebMvcTest` slices (with `JwtFilter` excluded)
   for HTTP-contract behavior, plus a couple of full-context `@SpringBootTest` +
@@ -162,18 +188,28 @@ Written down deliberately rather than left implicit - these are choices, not ove
 - **AI grading prompt has no injection-hardening yet** (no delimiters or "treat this as untrusted
   data" framing around the user's submitted answer). A known next step before this touches
   anything beyond demo data.
-- **No frontend-facing endpoints yet** (public topic listing, session history/resume) -
-  deliberately deferred until the Vite frontend exists to design them against, rather than
-  guessing at shapes it will need.
+- **No frontend-facing endpoints yet** (public topic listing, a session *history list*) -
+  deliberately deferred until the Vite frontend exists to design them against. A single session's
+  own status/summary is already readable (`GET /api/sessions/{id}`) - it's a listing across a
+  user's sessions that's still missing.
+- **Voice-answer audio itself is out of scope.** The start/stop endpoints record timing only;
+  `VoiceAnswer.audioFileUrl` exists as a column but nothing uploads to it, and there's no
+  audio-storage integration yet - that's frontend/infrastructure work for when voice UI lands.
+- **A started-but-never-submitted voice recording** leaves an orphan `VoiceAnswer` row (no
+  `Attempt` ever gets attached to it). Harmless - nothing references it, so it can't block a
+  session from completing - but the scheduled sweep doesn't clean these up yet.
 
 ## Status
 
 **Implemented:** registration/login/email verification, user profile management, full session
-lifecycle (start/complete) across all three session types, MCQ/coding/open-ended attempt
-submission with async grading and a polling endpoint, and a full admin surface (user moderation,
-topic CRUD, question/option/coding-challenge/test-case CRUD - including full-detail question
-browsing with the answer key, admin-only).
+lifecycle (start/complete/read-status) across all three session types with server-enforced,
+per-type deadlines and automatic expiry (lazy check-on-access plus a scheduled sweep);
+MCQ/coding/open-ended attempt submission with async grading, a polling endpoint, and server-side
+voice-answer timing; Real Interview's strict in-order question flow with a one-at-a-time
+current-question endpoint; and a full admin surface (user moderation, topic CRUD,
+question/option/coding-challenge/test-case CRUD - including full-detail question browsing with
+the answer key, admin-only).
 
-**Deliberately deferred**, see above: public topics list and session history endpoints (frontend
-not built yet), request validation on three controllers, `@RestControllerAdvice`, AI prompt
-injection hardening, database migrations.
+**Deliberately deferred**, see above: public topics list and a cross-session history *list*
+(frontend not built yet), request validation on three controllers, `@RestControllerAdvice`, AI
+prompt injection hardening, database migrations, voice-answer audio upload/storage.

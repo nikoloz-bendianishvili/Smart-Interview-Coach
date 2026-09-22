@@ -32,6 +32,7 @@ public class AiGradingService {
     private final AnthropicClient anthropicClient;
     private final VoiceAnswerRepository voiceAnswerRepository;
     private final AttemptRepository attemptRepository;
+    private final SessionService sessionService;
 
     private record GradeResult(double score, String feedback) {
     }
@@ -68,6 +69,10 @@ public class AiGradingService {
             Attempt attempt = voiceAnswer.getAttempt();
             attempt.setStatus(AttemptStatus.FAILED);
             attemptRepository.save(attempt);
+        } finally {
+            // See JudgeService.gradeSubmission's identical finally block for why this is
+            // best-effort here and backstopped by SessionSweepService's sweep.
+            sessionService.finalizeIfGradingComplete(voiceAnswer.getAttempt().getSessionQuestion().getSession());
         }
     }
 

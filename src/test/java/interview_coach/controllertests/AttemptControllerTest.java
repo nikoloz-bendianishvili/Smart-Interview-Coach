@@ -11,6 +11,7 @@ import interview_coach.entities.User;
 import interview_coach.enums.AttemptStatus;
 import interview_coach.enums.QuestionType;
 import interview_coach.exceptions.AttemptAlreadyExistsException;
+import interview_coach.exceptions.InvalidVoiceRecordingStateException;
 import interview_coach.exceptions.SessionAccessDeniedException;
 import interview_coach.exceptions.SessionQuestionNotFoundException;
 import interview_coach.repositories.CodeSubmissionRepository;
@@ -197,6 +198,35 @@ class AttemptControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request))
                         .with(csrf()))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(username = USER_EMAIL)
+    void startVoiceRecording_returns204() throws Exception {
+        when(userService.getUserByEmail(USER_EMAIL)).thenReturn(User.builder().id(1L).email(USER_EMAIL).build());
+
+        mockMvc.perform(post("/api/attempts/2/voice/start").with(csrf()))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @WithMockUser(username = USER_EMAIL)
+    void stopVoiceRecording_returns204() throws Exception {
+        when(userService.getUserByEmail(USER_EMAIL)).thenReturn(User.builder().id(1L).email(USER_EMAIL).build());
+
+        mockMvc.perform(post("/api/attempts/2/voice/stop").with(csrf()))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @WithMockUser(username = USER_EMAIL)
+    void stopVoiceRecording_withNoPriorStart_returns409() throws Exception {
+        when(userService.getUserByEmail(USER_EMAIL)).thenReturn(User.builder().id(1L).email(USER_EMAIL).build());
+        org.mockito.Mockito.doThrow(new InvalidVoiceRecordingStateException("No active voice recording to stop - call start first."))
+                .when(attemptService).stopVoiceRecording(anyLong(), any(User.class));
+
+        mockMvc.perform(post("/api/attempts/2/voice/stop").with(csrf()))
                 .andExpect(status().isConflict());
     }
 }

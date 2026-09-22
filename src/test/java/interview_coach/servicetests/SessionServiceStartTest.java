@@ -10,6 +10,7 @@ import interview_coach.enums.QuestionType;
 import interview_coach.enums.SessionStatus;
 import interview_coach.enums.SessionType;
 import interview_coach.exceptions.InsufficientQuestionsException;
+import interview_coach.exceptions.InvalidSessionRequestException;
 import interview_coach.repositories.AttemptRepository;
 import interview_coach.repositories.QuestionRepository;
 import interview_coach.repositories.SessionQuestionRepository;
@@ -21,7 +22,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.Clock;
 import java.util.List;
 import java.util.stream.IntStream;
 
@@ -58,7 +61,15 @@ class SessionServiceStartTest {
 
     @BeforeEach
     void setUp() {
-        sessionService = new SessionService(sessionRepository, questionRepository, attemptRepository, sessionQuestionRepository);
+        sessionService = new SessionService(sessionRepository, questionRepository, attemptRepository,
+                sessionQuestionRepository, Clock.systemDefaultZone());
+        // @Value fields are only populated by Spring; set them explicitly for this plain
+        // Mockito unit test so computeDeadline (called at the end of every startSession) has
+        // real multiplier values rather than Java's 0.0 default.
+        ReflectionTestUtils.setField(sessionService, "realInterviewMultiplier", 1.10);
+        ReflectionTestUtils.setField(sessionService, "freeMockMultiplier", 1.50);
+        ReflectionTestUtils.setField(sessionService, "customPracticeMultiplier", 2.00);
+        ReflectionTestUtils.setField(sessionService, "gracePeriodSeconds", 30L);
         user = User.builder().id(1L).build();
         topic = Topic.builder().id(5L).topicName("Java").build();
 
@@ -112,21 +123,21 @@ class SessionServiceStartTest {
     // ---------- FREE_MOCK ----------
 
     @Test
-    void startSession_freeMock_bothCountAndTimeLimitProvided_throwsIllegalArgument() {
+    void startSession_freeMock_bothCountAndTimeLimitProvided_throwsInvalidSessionRequest() {
         SessionDTO dto = new SessionDTO(user, null, SessionType.FREE_MOCK, null,
                 InteractionMode.TEXT, 10, 30);
 
         assertThatThrownBy(() -> sessionService.startSession(dto))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(InvalidSessionRequestException.class);
     }
 
     @Test
-    void startSession_freeMock_neitherCountNorTimeLimitProvided_throwsIllegalArgument() {
+    void startSession_freeMock_neitherCountNorTimeLimitProvided_throwsInvalidSessionRequest() {
         SessionDTO dto = new SessionDTO(user, null, SessionType.FREE_MOCK, null,
                 InteractionMode.TEXT, null, null);
 
         assertThatThrownBy(() -> sessionService.startSession(dto))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(InvalidSessionRequestException.class);
     }
 
     @Test
@@ -178,6 +189,15 @@ class SessionServiceStartTest {
 
         org.mockito.Mockito.verify(questionRepository).findRandomByType("CODING", 2);
         org.mockito.Mockito.verify(questionRepository).findRandomByType("OPEN_ENDED", 8);
+    }
+
+    @Test
+    void startSession_realInterview_missingTimeLimitMinutes_throwsInvalidSessionRequest() {
+        SessionDTO dto = new SessionDTO(user, null, SessionType.REAL_INTERVIEW, null,
+                InteractionMode.TEXT, null, null);
+
+        assertThatThrownBy(() -> sessionService.startSession(dto))
+                .isInstanceOf(InvalidSessionRequestException.class);
     }
 
     @Test

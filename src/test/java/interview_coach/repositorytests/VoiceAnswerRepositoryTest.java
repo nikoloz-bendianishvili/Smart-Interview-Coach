@@ -80,6 +80,7 @@ public class VoiceAnswerRepositoryTest {
 
         VoiceAnswer va = VoiceAnswer.builder()
                 .attempt(a)
+                .sessionQuestion(sq)
                 .audioTranscript("hi")
                 .gradingStatus(GradingStatus.PENDING)
                 .build();

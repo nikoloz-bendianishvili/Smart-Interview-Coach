@@ -3,12 +3,15 @@ package interview_coach.servicetests;
 import interview_coach.entities.*;
 import interview_coach.enums.QuestionType;
 import interview_coach.enums.SessionStatus;
+import interview_coach.enums.SessionType;
 import interview_coach.exceptions.AttemptAlreadyExistsException;
+import interview_coach.exceptions.QuestionNotYetAvailableException;
 import interview_coach.exceptions.QuestionTypeMismatchException;
 import interview_coach.exceptions.SessionAccessDeniedException;
 import interview_coach.exceptions.SessionAlreadyCompletedException;
 import interview_coach.repositories.*;
 import interview_coach.services.core.AttemptService;
+import interview_coach.services.core.SessionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,6 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
+import java.time.Clock;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -42,6 +46,8 @@ class AttemptServiceOwnershipTest {
     private VoiceAnswerRepository voiceAnswerRepository;
     @Mock
     private ApplicationEventPublisher eventPublisher;
+    @Mock
+    private SessionService sessionService;
 
     private AttemptService attemptService;
 
@@ -56,8 +62,12 @@ class AttemptServiceOwnershipTest {
                 sessionQuestionRepository,
                 codeSubmissionRepository,
                 voiceAnswerRepository,
-                eventPublisher
+                eventPublisher,
+                sessionService,
+                Clock.systemDefaultZone()
         );
+        // closeIfExpired's mocked default (false) means "not expired" - preserves this test
+        // class's existing IN_PROGRESS/COMPLETED fixtures untouched.
 
         owner = User.builder().id(1L).build();
         intruder = User.builder().id(2L).build();
@@ -125,6 +135,50 @@ class AttemptServiceOwnershipTest {
 
         org.assertj.core.api.Assertions.assertThat(result.explanation())
                 .isEqualTo("Answer recorded. You'll see the explanation when the session ends.");
+    }
+
+    @Test
+    void submitMCQAttempt_onRealInterview_whenThisIsTheCurrentQuestion_succeeds() {
+        SessionQuestion sq = sessionQuestionOwnedBy(owner, SessionStatus.IN_PROGRESS, QuestionType.MCQ);
+        sq.getSession().setSessionType(SessionType.REAL_INTERVIEW);
+        when(sessionQuestionRepository.findById(1L)).thenReturn(Optional.of(sq));
+        when(sessionQuestionRepository.findFirstBySession_IdAndAttemptIsNullOrderByOrderIndexAsc(1L))
+                .thenReturn(Optional.of(sq)); // this question IS the current one
+        when(optionRepository.findByQuestionId(1L)).thenReturn(Optional.of(
+                Option.builder().option1("A").option2("B").correctOption(1).build()));
+        when(attemptRepository.save(org.mockito.ArgumentMatchers.any(Attempt.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        Attempt attempt = attemptService.submitMCQAttempt(1L, owner, 1, 30);
+
+        org.assertj.core.api.Assertions.assertThat(attempt.getIsCorrect()).isTrue();
+    }
+
+    @Test
+    void submitMCQAttempt_onRealInterview_whenAnotherQuestionIsCurrent_throwsQuestionNotYetAvailable() {
+        SessionQuestion sq = sessionQuestionOwnedBy(owner, SessionStatus.IN_PROGRESS, QuestionType.MCQ);
+        sq.getSession().setSessionType(SessionType.REAL_INTERVIEW);
+        SessionQuestion earlierUnansweredQuestion = SessionQuestion.builder().id(999L).orderIndex(1).build();
+        when(sessionQuestionRepository.findById(1L)).thenReturn(Optional.of(sq));
+        when(sessionQuestionRepository.findFirstBySession_IdAndAttemptIsNullOrderByOrderIndexAsc(1L))
+                .thenReturn(Optional.of(earlierUnansweredQuestion)); // a DIFFERENT question is current
+
+        assertThatThrownBy(() -> attemptService.submitMCQAttempt(1L, owner, 1, 30))
+                .isInstanceOf(QuestionNotYetAvailableException.class);
+    }
+
+    @Test
+    void giveUpAttempt_onRealInterview_outOfOrder_throwsQuestionNotYetAvailable() {
+        SessionQuestion sq = sessionQuestionOwnedBy(owner, SessionStatus.IN_PROGRESS, QuestionType.CODING);
+        sq.getSession().setSessionType(SessionType.REAL_INTERVIEW);
+        SessionQuestion earlierUnansweredQuestion = SessionQuestion.builder().id(999L).orderIndex(1).build();
+        when(sessionQuestionRepository.findById(1L)).thenReturn(Optional.of(sq));
+        when(sessionQuestionRepository.findFirstBySession_IdAndAttemptIsNullOrderByOrderIndexAsc(1L))
+                .thenReturn(Optional.of(earlierUnansweredQuestion));
+
+        // Give-up (expectedType == null) is not exempt from the ordering guard.
+        assertThatThrownBy(() -> attemptService.giveUpAttempt(1L, owner))
+                .isInstanceOf(QuestionNotYetAvailableException.class);
     }
 
     @Test

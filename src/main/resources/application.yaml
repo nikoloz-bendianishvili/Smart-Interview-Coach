@@ -24,6 +24,15 @@ app:
     url: ${FRONTEND_URL:http://localhost:8080}
   seed:
     enabled: ${SEED_ENABLED:false}
+  session:
+    time-limit-multiplier:
+      real-interview: ${REAL_INTERVIEW_TIME_MULTIPLIER:1.10}
+      free-mock: ${FREE_MOCK_TIME_MULTIPLIER:1.50}
+      custom-practice: ${CUSTOM_PRACTICE_TIME_MULTIPLIER:2.00}
+    grace-period-seconds: ${SESSION_GRACE_PERIOD_SECONDS:30}
+    sweep-interval-ms: ${SESSION_SWEEP_INTERVAL_MS:60000}
+  grading:
+    stale-pending-minutes: ${STALE_PENDING_MINUTES:30}
 
 judge0:
   api:

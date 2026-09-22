@@ -60,4 +60,18 @@ public class Session {
     private LocalDateTime endTime;
 
     private Integer totalScore;
+
+    /**
+     * Computed once at start (SessionService.startSession) from the SessionType's multiplier
+     * over either the chosen time or the selected questions' summed timeLimit. Enforcement adds
+     * a grace period on top of this at check time (effectiveDeadline), never stored here.
+     */
+    private LocalDateTime sessionDeadline;
+
+    /**
+     * True only when this session was closed because sessionDeadline passed, as opposed to the
+     * user completing it manually (with or without attempts still pending grading).
+     */
+    @Builder.Default
+    private boolean endedByTimeout = false;
 }

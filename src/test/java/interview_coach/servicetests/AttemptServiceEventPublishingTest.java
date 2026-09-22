@@ -8,6 +8,7 @@ import interview_coach.events.CodeSubmissionCreatedEvent;
 import interview_coach.events.VoiceAnswerCreatedEvent;
 import interview_coach.repositories.*;
 import interview_coach.services.core.AttemptService;
+import interview_coach.services.core.SessionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,6 +16,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+
+import java.time.Clock;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -41,6 +44,8 @@ class AttemptServiceEventPublishingTest {
     private VoiceAnswerRepository voiceAnswerRepository;
     @Mock
     private ApplicationEventPublisher eventPublisher;
+    @Mock
+    private SessionService sessionService;
 
     private AttemptService attemptService;
 
@@ -54,7 +59,9 @@ class AttemptServiceEventPublishingTest {
                 sessionQuestionRepository,
                 codeSubmissionRepository,
                 voiceAnswerRepository,
-                eventPublisher
+                eventPublisher,
+                sessionService,
+                Clock.systemDefaultZone()
         );
 
         user = User.builder().id(1L).build();

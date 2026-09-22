@@ -38,6 +38,7 @@ public class JudgeService {
     private final CodeSubmissionRepository codeSubmissionRepository;
     private final TestCaseRepository testCaseRepository;
     private final AttemptRepository attemptRepository;
+    private final SessionService sessionService;
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -80,6 +81,14 @@ public class JudgeService {
             Attempt attempt = submission.getAttempt();
             attempt.setStatus(AttemptStatus.FAILED);
             attemptRepository.save(attempt);
+        } finally {
+            // Best-effort immediate finalization - if this session was AWAITING_GRADING and
+            // this was its last pending attempt, flip it to COMPLETED now rather than waiting
+            // for the next sweep tick. Runs on both success and failure alike, since either way
+            // this attempt has left PENDING. See SessionSweepService's Javadoc for why this
+            // can't be relied on as the ONLY finalization path (a same-tick-race with another
+            // grader can make both miss it).
+            sessionService.finalizeIfGradingComplete(submission.getAttempt().getSessionQuestion().getSession());
         }
     }
 

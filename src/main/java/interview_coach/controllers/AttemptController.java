@@ -87,6 +87,35 @@ public class AttemptController {
                 .body(toResponse(attempt));
     }
 
+    @Operation(summary = "Start voice-answer timing", description = "Records the server-side start " +
+            "time for a voice recording on this question, ahead of actually submitting the answer. " +
+            "Calling this again before stop/submit resets the take - the previous startedAt/endedAt " +
+            "are discarded, not accumulated. The client's own clock is never used for timing.")
+    @PostMapping("/{sessionQuestionId}/voice/start")
+    public ResponseEntity<Void> startVoiceRecording(
+            Authentication authentication,
+            @PathVariable Long sessionQuestionId) {
+
+        User user = userService.getUserByEmail(authentication.getName());
+        attemptService.startVoiceRecording(sessionQuestionId, user);
+
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Stop voice-answer timing", description = "Records the server-side end time " +
+            "for a voice recording started via .../voice/start. Rejected (409) if start was never " +
+            "called for this question.")
+    @PostMapping("/{sessionQuestionId}/voice/stop")
+    public ResponseEntity<Void> stopVoiceRecording(
+            Authentication authentication,
+            @PathVariable Long sessionQuestionId) {
+
+        User user = userService.getUserByEmail(authentication.getName());
+        attemptService.stopVoiceRecording(sessionQuestionId, user);
+
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{sessionQuestionId}/give-up")
     public ResponseEntity<GiveUpResponse> giveUp(
             Authentication authentication,

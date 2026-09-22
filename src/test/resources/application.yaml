@@ -25,6 +25,15 @@ sender: test@example.com
 app:
   frontend:
     url: http://localhost:8080
+  session:
+    time-limit-multiplier:
+      real-interview: 1.10
+      free-mock: 1.50
+      custom-practice: 2.00
+    grace-period-seconds: 30
+    sweep-interval-ms: 60000
+  grading:
+    stale-pending-minutes: 30
 
 judge0:
   api:

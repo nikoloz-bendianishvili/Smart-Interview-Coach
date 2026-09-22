@@ -5,6 +5,7 @@ import interview_coach.enums.AttemptStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -19,5 +20,7 @@ public interface AttemptRepository extends JpaRepository<Attempt, Long> {
     long countBySessionQuestion_Session_IdAndStatus(Long sessionId, AttemptStatus status);
 
     boolean existsBySessionQuestionId(Long sessionQuestionId);
+
+    List<Attempt> findByStatusAndCreatedAtBefore(AttemptStatus status, LocalDateTime cutoff);
 }
 
