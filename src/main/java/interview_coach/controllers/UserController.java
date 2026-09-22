@@ -7,11 +7,15 @@ import interview_coach.dto.UserProfileResponse;
 import interview_coach.dto.UserUpdateDTO;
 import interview_coach.entities.User;
 import interview_coach.services.core.UserService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+@Tag(name = "Users", description = "The current user's own profile, plus other users' public profiles.")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor

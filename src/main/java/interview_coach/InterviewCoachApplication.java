@@ -13,5 +13,4 @@ public class InterviewCoachApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(InterviewCoachApplication.class, args);
 	}
-
 }

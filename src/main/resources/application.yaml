@@ -22,6 +22,8 @@ sender: ${SENDER_EMAIL}
 app:
   frontend:
     url: ${FRONTEND_URL:http://localhost:8080}
+  seed:
+    enabled: ${SEED_ENABLED:false}
 
 judge0:
   api:

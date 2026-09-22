@@ -6,6 +6,9 @@ import interview_coach.entities.*;
 import interview_coach.enums.QuestionType;
 import interview_coach.repositories.VoiceAnswerRepository;
 import interview_coach.services.core.*;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -20,6 +23,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
 
+@Tag(name = "Sessions", description = "Start and complete mock-interview sessions (CUSTOM_PRACTICE, " +
+        "REAL_INTERVIEW, FREE_MOCK).")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/api/sessions")
 @RequiredArgsConstructor
@@ -33,6 +39,10 @@ public class SessionController {
     private final TestCaseService testCaseService;
     private final VoiceAnswerRepository voiceAnswerRepository;
 
+    @Operation(summary = "Start a session", description = "Question selection depends on sessionType: " +
+            "CUSTOM_PRACTICE needs topicId + questionType + numOfQuestions; REAL_INTERVIEW derives the " +
+            "question count from timeLimitMinutes; FREE_MOCK needs exactly one of numOfQuestions or " +
+            "timeLimitMinutes.")
     @PostMapping("/start")
     public ResponseEntity<SessionStartResponse> startSession(
             Authentication authentication,
@@ -103,12 +113,16 @@ public class SessionController {
         Session session = sessionService.completeSession(sessionId, user);
         List<Attempt> attempts = attemptService.getAttemptsBySession(sessionId);
 
-        List<AttemptSummaryResponse> results = new ArrayList<>();
         int maxScore = 0;
+        for (SessionQuestion sq : sessionService.getSessionQuestions(sessionId)) {
+            Integer questionMaxScore = sq.getQuestion().getScore();
+            maxScore += questionMaxScore != null ? questionMaxScore : 0;
+        }
+
+        List<AttemptSummaryResponse> results = new ArrayList<>();
         for (Attempt attempt : attempts) {
             Question question = attempt.getSessionQuestion().getQuestion();
             Integer questionMaxScore = question.getScore();
-            maxScore += questionMaxScore != null ? questionMaxScore : 0;
 
             String aiFeedback = null;
             if (question.getQuestionType() == QuestionType.OPEN_ENDED) {

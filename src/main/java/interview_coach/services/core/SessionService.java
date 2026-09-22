@@ -120,7 +120,7 @@ public class SessionService {
     }
 
     private List<Question> selectQuestionsForCustomPractice(Long topicId, QuestionType questionType, int numOfQuestions) {
-        long available = questionRepository.countByTopicIdAndQuestionType(topicId, questionType);
+        long available = questionRepository.countByTopicIdAndQuestionTypeAndActiveTrue(topicId, questionType);
 
         if (available < numOfQuestions) {
             throw new InsufficientQuestionsException(
@@ -144,8 +144,8 @@ public class SessionService {
         int openEndedCount = (int) Math.round(totalQuestions * OPEN_ENDED_RATIO);
         int codingCount = totalQuestions - openEndedCount;
 
-        long availableCoding = questionRepository.countByQuestionType(QuestionType.CODING);
-        long availableOpenEnded = questionRepository.countByQuestionType(QuestionType.OPEN_ENDED);
+        long availableCoding = questionRepository.countByQuestionTypeAndActiveTrue(QuestionType.CODING);
+        long availableOpenEnded = questionRepository.countByQuestionTypeAndActiveTrue(QuestionType.OPEN_ENDED);
 
         if (availableCoding < codingCount || availableOpenEnded < openEndedCount) {
             throw new InsufficientQuestionsException(

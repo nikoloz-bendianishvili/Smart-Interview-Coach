@@ -7,6 +7,8 @@ import interview_coach.enums.QuestionType;
 import interview_coach.exceptions.AdminActionNotAllowedException;
 import interview_coach.exceptions.QuestionTypeMismatchException;
 import interview_coach.services.core.*;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -27,6 +29,9 @@ import java.util.stream.Stream;
  * silent no-op since @EnableMethodSecurity is not configured) is what
  * produces the 403 for non-admin callers.
  */
+@Tag(name = "Admin", description = "User moderation, topic CRUD and question/coding-challenge " +
+        "moderation. Requires ROLE_ADMIN (log in as the seeded demo.admin@example.com).")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor

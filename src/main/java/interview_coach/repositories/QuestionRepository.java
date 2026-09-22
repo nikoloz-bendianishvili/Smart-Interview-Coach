@@ -24,6 +24,8 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
 
     long countByTopicIdAndQuestionType(Long topicId, QuestionType questionType);
 
+    long countByTopicIdAndQuestionTypeAndActiveTrue(Long topicId, QuestionType questionType);
+
     long countByTopicId(Long topicId);
 
     List<Question> findByTopicIdAndActiveTrue(Long topicId);
@@ -38,11 +40,13 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
             "ORDER BY RAND() LIMIT :limit", nativeQuery = true)
     List<Question> findRandomByTopicAndType(@Param("topicId") Long topicId, @Param("questionType") String questionType, @Param("limit") int limit);
 
-    @Query("SELECT AVG(q.timeLimit) FROM Question q WHERE q.questionType = :questionType")
+    @Query("SELECT AVG(q.timeLimit) FROM Question q WHERE q.questionType = :questionType AND q.active = true")
     Double findAverageTimeLimitByType(@Param("questionType") QuestionType questionType);
 
 
     long countByQuestionType(QuestionType questionType);
+
+    long countByQuestionTypeAndActiveTrue(QuestionType questionType);
 
     @Query(value = "SELECT * FROM questions WHERE question_type = :questionType AND active = true ORDER BY RAND() LIMIT :limit", nativeQuery = true)
     List<Question> findRandomByType(@Param("questionType") String questionType, @Param("limit") int limit);

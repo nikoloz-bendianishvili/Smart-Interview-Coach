@@ -12,6 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 import interview_coach.repositories.QuestionRepository;
 import interview_coach.repositories.TopicRepository;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(classes = InterviewCoachApplication.class)
@@ -98,6 +100,87 @@ public class QuestionRepositoryTest {
                 .extracting(Question::getStatement)
                 .contains("What is TCP?")
                 .doesNotContain("What is UDP?");
+    }
+
+    @Test
+    void findRandomByType_respectsLimitAndExcludesSoftDeletedQuestions() {
+        Topic t = Topic.builder().topicName("Randomization").description("rand").build();
+        topicRepository.save(t);
+
+        for (int i = 0; i < 5; i++) {
+            questionRepository.save(Question.builder()
+                    .topic(t)
+                    .statement("Active MCQ " + i)
+                    .questionType(QuestionType.MCQ)
+                    .difficulty(Difficulty.EASY)
+                    .timeLimit(60)
+                    .build());
+        }
+        questionRepository.save(Question.builder()
+                .topic(t)
+                .statement("Inactive MCQ")
+                .questionType(QuestionType.MCQ)
+                .difficulty(Difficulty.EASY)
+                .timeLimit(60)
+                .active(false)
+                .build());
+
+        List<Question> result = questionRepository.findRandomByType(QuestionType.MCQ.name(), 3);
+
+        assertThat(result).hasSize(3);
+        assertThat(result).extracting(Question::getStatement).doesNotContain("Inactive MCQ");
+    }
+
+    @Test
+    void findRandomByTopicAndType_respectsLimitTopicAndTypeAndExcludesSoftDeletedQuestions() {
+        Topic target = Topic.builder().topicName("Target Topic").description("target").build();
+        Topic other = Topic.builder().topicName("Other Topic").description("other").build();
+        topicRepository.save(target);
+        topicRepository.save(other);
+
+        for (int i = 0; i < 4; i++) {
+            questionRepository.save(Question.builder()
+                    .topic(target)
+                    .statement("Target CODING " + i)
+                    .questionType(QuestionType.CODING)
+                    .difficulty(Difficulty.MEDIUM)
+                    .timeLimit(300)
+                    .build());
+        }
+        // Wrong topic - must never be returned.
+        questionRepository.save(Question.builder()
+                .topic(other)
+                .statement("Other topic CODING")
+                .questionType(QuestionType.CODING)
+                .difficulty(Difficulty.MEDIUM)
+                .timeLimit(300)
+                .build());
+        // Right topic, wrong type - must never be returned.
+        questionRepository.save(Question.builder()
+                .topic(target)
+                .statement("Target MCQ")
+                .questionType(QuestionType.MCQ)
+                .difficulty(Difficulty.MEDIUM)
+                .timeLimit(60)
+                .build());
+        // Right topic and type, but soft-deleted - must never be returned.
+        questionRepository.save(Question.builder()
+                .topic(target)
+                .statement("Target CODING inactive")
+                .questionType(QuestionType.CODING)
+                .difficulty(Difficulty.MEDIUM)
+                .timeLimit(300)
+                .active(false)
+                .build());
+
+        List<Question> result = questionRepository.findRandomByTopicAndType(target.getId(), QuestionType.CODING.name(), 2);
+
+        assertThat(result).hasSize(2);
+        assertThat(result).allSatisfy(q -> {
+            assertThat(q.getTopic().getId()).isEqualTo(target.getId());
+            assertThat(q.getQuestionType()).isEqualTo(QuestionType.CODING);
+            assertThat(q.isActive()).isTrue();
+        });
     }
 }
 
