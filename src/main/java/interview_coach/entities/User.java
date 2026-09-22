@@ -10,6 +10,7 @@ import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @Setter
@@ -50,6 +51,9 @@ public class User {
     private LocalDateTime banExpirationTime;
 
     private boolean isVerified;
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Session> sessions;
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)

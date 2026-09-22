@@ -65,4 +65,5 @@ public class AuthService {
         }
         return "Email verified successfully! You can now log in.";
     }
+
 }

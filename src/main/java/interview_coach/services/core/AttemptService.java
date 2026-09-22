@@ -1,8 +1,10 @@
 package interview_coach.services.core;
 
 import interview_coach.entities.*;
+import interview_coach.enums.AttemptStatus;
 import interview_coach.enums.GradingStatus;
 import interview_coach.enums.QuestionType;
+import interview_coach.enums.SessionType;
 import interview_coach.exceptions.OptionNotFoundException;
 import interview_coach.exceptions.SessionQuestionNotFoundException;
 import interview_coach.repositories.*;
@@ -41,7 +43,7 @@ public class AttemptService {
                 .isCorrect(isCorrect)
                 .score(score)
                 .timeTakenSeconds(timeTakenSeconds)
-                .wasSkipped(false)
+                .status(AttemptStatus.GRADED) // MCQ grades instantly, no async pipeline
                 .build();
 
         return attemptRepository.save(attempt);
@@ -56,7 +58,7 @@ public class AttemptService {
                 .sessionQuestion(sq)
                 .user(user)
                 .timeTakenSeconds(timeTakenSeconds)
-                .wasSkipped(false)
+                .status(AttemptStatus.PENDING)
                 .build();
         attemptRepository.save(attempt);
 
@@ -67,7 +69,7 @@ public class AttemptService {
                 .build();
         codeSubmissionRepository.save(submission);
 
-        judgeService.gradeSubmission(submission.getId()); // async — runs Judge0, updates score once done
+        judgeService.gradeSubmission(submission.getId());
 
         return attempt;
     }
@@ -82,7 +84,7 @@ public class AttemptService {
                 .user(user)
                 .textAnswer(answerText)
                 .timeTakenSeconds(timeTakenSeconds)
-                .wasSkipped(false)
+                .status(AttemptStatus.PENDING)
                 .build();
         attemptRepository.save(attempt);
 
@@ -93,7 +95,7 @@ public class AttemptService {
                 .build();
         voiceAnswerRepository.save(voiceAnswer);
 
-        aiGradingService.gradeAnswer(voiceAnswer.getId()); // async — calls AI API, updates score once done
+        aiGradingService.gradeAnswer(voiceAnswer.getId());
 
         return attempt;
     }
@@ -107,15 +109,21 @@ public class AttemptService {
                 .sessionQuestion(sq)
                 .user(user)
                 .score(0)
-                .wasSkipped(true)
+                .status(AttemptStatus.SKIPPED)
                 .build();
         attemptRepository.save(attempt);
 
         Question question = sq.getQuestion();
-        if (question.getQuestionType() == QuestionType.CODING) {
-            return question.getExplanation() + "\n\n" + question.getCodingChallenge().getReferenceSolution();
+        SessionType sessionType = sq.getSession().getSessionType();
+
+        if (sessionType == SessionType.CUSTOM_PRACTICE) {
+            if (question.getQuestionType() == QuestionType.CODING) {
+                return question.getExplanation() + "\n\n" + question.getCodingChallenge().getReferenceSolution();
+            }
+            return question.getExplanation();
         }
-        return question.getExplanation();
+
+        return "Answer recorded. You'll see the explanation when the session ends.";
     }
 
     public List<Attempt> getAttemptsBySession(Long sessionId) {

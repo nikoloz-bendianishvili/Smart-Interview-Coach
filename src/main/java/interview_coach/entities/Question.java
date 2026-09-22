@@ -49,6 +49,9 @@ public class Question {
 
     private Integer score;
 
+    @Column(nullable = false)
+    private boolean active = true;
+
     @Column(columnDefinition = "TEXT")
     private String explanation;
 }

@@ -49,4 +49,8 @@ public class TopicService {
         return topicRepository.findAll();
     }
 
+    public Topic getTopicById(Long aLong) {
+        return topicRepository.findById(aLong)
+                .orElseThrow(() -> new TopicNotFoundException("Topic not found with id: " + aLong));
+    }
 }

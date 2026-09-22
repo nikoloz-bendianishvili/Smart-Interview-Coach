@@ -62,7 +62,10 @@ public class QuestionService {
 
     @Transactional
     public void deleteQuestion(Long questionId) {
-        questionRepository.deleteById(questionId);
+        Question question = questionRepository.findById(questionId)
+                .orElseThrow(() -> new QuestionNotFoundException("Question not found"));
+        question.setActive(false);
+        questionRepository.save(question);
     }
 
     @Transactional

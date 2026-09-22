@@ -14,6 +14,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.client.RestClient;
 
 import java.util.List;
@@ -34,7 +36,7 @@ public class AiGradingService {
     private final AttemptRepository attemptRepository;
 
     @Async
-    @Transactional
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void gradeAnswer(Long voiceAnswerId) {
         VoiceAnswer voiceAnswer = voiceAnswerRepository.findById(voiceAnswerId)
                 .orElseThrow(() -> new VoiceAnswerNotFoundException("Voice answer not found"));

@@ -2,12 +2,10 @@ package interview_coach.services.core;
 
 import interview_coach.dto.SessionDTO;
 import interview_coach.entities.*;
-import interview_coach.enums.InteractionMode;
-import interview_coach.enums.QuestionType;
-import interview_coach.enums.SessionStatus;
-import interview_coach.enums.SessionType;
+import interview_coach.enums.*;
 import interview_coach.exceptions.InsufficientQuestionsException;
 import interview_coach.exceptions.SessionNotFoundException;
+import interview_coach.exceptions.SessionNotReadyException;
 import interview_coach.repositories.AttemptRepository;
 import interview_coach.repositories.QuestionRepository;
 import interview_coach.repositories.SessionQuestionRepository;
@@ -68,6 +66,10 @@ public class SessionService {
     @Transactional
     public void completeSession(Long sessionId) {
         Session session = getSessionById(sessionId);
+        long pendingCount = attemptRepository.countBySessionQuestion_Session_IdAndStatus(sessionId, AttemptStatus.PENDING);
+        if (pendingCount > 0) {
+            throw new SessionNotReadyException("Cannot complete session while attempts are still being graded.");
+        }
         if (session != null) {
             session.setStatus(SessionStatus.COMPLETED);
             session.setEndTime(java.time.LocalDateTime.now());

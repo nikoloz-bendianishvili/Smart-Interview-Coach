@@ -119,14 +119,23 @@ public class UserService {
             user.setTargetRole(updateDTO.targetRole());
         }
 
-        if (updateDTO.password() != null && !updateDTO.password().isEmpty()) {
-            user.setPasswordHash(passwordEncoder.encode(updateDTO.password()));
-        }
         userRepository.save(user);
 
         if (!user.isVerified()) {
             String token = verificationService.createVerificationToken(user);
             emailService.sendVerificationEmail(user.getEmail(), token);
         }
+    }
+
+    @Transactional
+    public void changePassword(Long userId, String currentPassword, String newPassword) {
+        User user = getUserById(userId);
+
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new InvalidCredentialsException("Current password is incorrect");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
     }
 }
