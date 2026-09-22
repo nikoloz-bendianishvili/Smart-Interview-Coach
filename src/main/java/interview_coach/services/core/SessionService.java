@@ -4,6 +4,8 @@ import interview_coach.dto.SessionDTO;
 import interview_coach.entities.*;
 import interview_coach.enums.*;
 import interview_coach.exceptions.InsufficientQuestionsException;
+import interview_coach.exceptions.SessionAccessDeniedException;
+import interview_coach.exceptions.SessionAlreadyCompletedException;
 import interview_coach.exceptions.SessionNotFoundException;
 import interview_coach.exceptions.SessionNotReadyException;
 import interview_coach.repositories.AttemptRepository;
@@ -64,18 +66,26 @@ public class SessionService {
     }
 
     @Transactional
-    public void completeSession(Long sessionId) {
+    public Session completeSession(Long sessionId, User user) {
         Session session = getSessionById(sessionId);
+
+        if (!session.getUser().getId().equals(user.getId())) {
+            throw new SessionAccessDeniedException("This session does not belong to the current user.");
+        }
+
+        if (session.getStatus() != SessionStatus.IN_PROGRESS) {
+            throw new SessionAlreadyCompletedException("This session is not in progress.");
+        }
+
         long pendingCount = attemptRepository.countBySessionQuestion_Session_IdAndStatus(sessionId, AttemptStatus.PENDING);
         if (pendingCount > 0) {
             throw new SessionNotReadyException("Cannot complete session while attempts are still being graded.");
         }
-        if (session != null) {
-            session.setStatus(SessionStatus.COMPLETED);
-            session.setEndTime(java.time.LocalDateTime.now());
-            session.setTotalScore(calculateTotalScore(session));
-            sessionRepository.save(session);
-        }
+
+        session.setStatus(SessionStatus.COMPLETED);
+        session.setEndTime(java.time.LocalDateTime.now());
+        session.setTotalScore(calculateTotalScore(session));
+        return sessionRepository.save(session);
     }
 
     public List<Session> getSessionsByUserDesc(Long userId) {

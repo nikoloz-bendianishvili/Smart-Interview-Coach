@@ -4,10 +4,12 @@ package interview_coach.controllers;
 import interview_coach.dto.*;
 import interview_coach.entities.*;
 import interview_coach.enums.QuestionType;
+import interview_coach.repositories.VoiceAnswerRepository;
 import interview_coach.services.core.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -24,10 +26,12 @@ import java.util.stream.Stream;
 public class SessionController {
 
     private final SessionService sessionService;
+    private final AttemptService attemptService;
     private final UserService userService;
     private final TopicService topicService;
     private final OptionService optionService;
     private final TestCaseService testCaseService;
+    private final VoiceAnswerRepository voiceAnswerRepository;
 
     @PostMapping("/start")
     public ResponseEntity<SessionStartResponse> startSession(
@@ -85,6 +89,56 @@ public class SessionController {
                 session.getSessionType(),
                 sessionQuestions.size(),
                 sessionQuestionResponses
+        );
+
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{sessionId}/complete")
+    public ResponseEntity<SessionSummaryResponse> completeSession(
+            Authentication authentication,
+            @PathVariable Long sessionId) {
+
+        User user = userService.getUserByEmail(authentication.getName());
+        Session session = sessionService.completeSession(sessionId, user);
+        List<Attempt> attempts = attemptService.getAttemptsBySession(sessionId);
+
+        List<AttemptSummaryResponse> results = new ArrayList<>();
+        int maxScore = 0;
+        for (Attempt attempt : attempts) {
+            Question question = attempt.getSessionQuestion().getQuestion();
+            Integer questionMaxScore = question.getScore();
+            maxScore += questionMaxScore != null ? questionMaxScore : 0;
+
+            String aiFeedback = null;
+            if (question.getQuestionType() == QuestionType.OPEN_ENDED) {
+                aiFeedback = voiceAnswerRepository.findByAttemptId(attempt.getId())
+                        .map(VoiceAnswer::getAiFeedback)
+                        .orElse(null);
+            }
+
+            results.add(new AttemptSummaryResponse(
+                    attempt.getSessionQuestion().getId(),
+                    attempt.getSessionQuestion().getOrderIndex(),
+                    question.getQuestionType(),
+                    question.getStatement(),
+                    attempt.getStatus(),
+                    attempt.getScore(),
+                    questionMaxScore,
+                    question.getExplanation(),
+                    aiFeedback
+            ));
+        }
+
+        SessionSummaryResponse response = new SessionSummaryResponse(
+                session.getId(),
+                session.getSessionType(),
+                session.getStatus(),
+                session.getTotalScore(),
+                maxScore,
+                session.getStartTime(),
+                session.getEndTime(),
+                results
         );
 
         return ResponseEntity.ok(response);

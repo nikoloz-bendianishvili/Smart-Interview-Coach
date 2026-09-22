@@ -4,10 +4,16 @@ import interview_coach.entities.*;
 import interview_coach.enums.AttemptStatus;
 import interview_coach.enums.GradingStatus;
 import interview_coach.enums.QuestionType;
+import interview_coach.enums.SessionStatus;
 import interview_coach.enums.SessionType;
 import interview_coach.events.CodeSubmissionCreatedEvent;
 import interview_coach.events.VoiceAnswerCreatedEvent;
+import interview_coach.exceptions.AttemptAlreadyExistsException;
+import interview_coach.exceptions.AttemptNotFoundException;
 import interview_coach.exceptions.OptionNotFoundException;
+import interview_coach.exceptions.QuestionTypeMismatchException;
+import interview_coach.exceptions.SessionAccessDeniedException;
+import interview_coach.exceptions.SessionAlreadyCompletedException;
 import interview_coach.exceptions.SessionQuestionNotFoundException;
 import interview_coach.repositories.*;
 import jakarta.transaction.Transactional;
@@ -28,10 +34,16 @@ public class AttemptService {
     private final VoiceAnswerRepository voiceAnswerRepository;
     private final ApplicationEventPublisher eventPublisher;
 
+    /**
+     * Result of {@link #giveUpAttempt}: the recorded (SKIPPED) attempt plus the
+     * explanation text to show the user.
+     */
+    public record GiveUpResult(Attempt attempt, String explanation) {
+    }
+
     @Transactional
     public Attempt submitMCQAttempt(Long sessionQuestionId, User user, Integer selectedOption, int timeTakenSeconds) {
-        SessionQuestion sq = sessionQuestionRepository.findById(sessionQuestionId)
-                .orElseThrow(() -> new SessionQuestionNotFoundException("SessionQuestion not found"));
+        SessionQuestion sq = loadOwnedSessionQuestion(sessionQuestionId, user, QuestionType.MCQ);
         Option option = optionRepository.findByQuestionId(sq.getQuestion().getId())
                 .orElseThrow(() -> new OptionNotFoundException("No options found"));
 
@@ -53,8 +65,7 @@ public class AttemptService {
 
     @Transactional
     public Attempt submitCodingAttempt(Long sessionQuestionId, User user, String sourceCode, int timeTakenSeconds) {
-        SessionQuestion sq = sessionQuestionRepository.findById(sessionQuestionId)
-                .orElseThrow(() -> new SessionQuestionNotFoundException("SessionQuestion not found"));
+        SessionQuestion sq = loadOwnedSessionQuestion(sessionQuestionId, user, QuestionType.CODING);
 
         Attempt attempt = Attempt.builder()
                 .sessionQuestion(sq)
@@ -78,8 +89,7 @@ public class AttemptService {
 
     @Transactional
     public Attempt submitOpenEndedAttempt(Long sessionQuestionId, User user, String answerText, int timeTakenSeconds) {
-        SessionQuestion sq = sessionQuestionRepository.findById(sessionQuestionId)
-                .orElseThrow(() -> new SessionQuestionNotFoundException("SessionQuestion not found"));
+        SessionQuestion sq = loadOwnedSessionQuestion(sessionQuestionId, user, QuestionType.OPEN_ENDED);
 
         Attempt attempt = Attempt.builder()
                 .sessionQuestion(sq)
@@ -103,9 +113,8 @@ public class AttemptService {
     }
 
     @Transactional
-    public String giveUpAttempt(Long sessionQuestionId, User user) {
-        SessionQuestion sq = sessionQuestionRepository.findById(sessionQuestionId)
-                .orElseThrow(() -> new SessionQuestionNotFoundException("SessionQuestion not found"));
+    public GiveUpResult giveUpAttempt(Long sessionQuestionId, User user) {
+        SessionQuestion sq = loadOwnedSessionQuestion(sessionQuestionId, user, null);
 
         Attempt attempt = Attempt.builder()
                 .sessionQuestion(sq)
@@ -118,14 +127,33 @@ public class AttemptService {
         Question question = sq.getQuestion();
         SessionType sessionType = sq.getSession().getSessionType();
 
+        String explanation;
         if (sessionType == SessionType.CUSTOM_PRACTICE) {
             if (question.getQuestionType() == QuestionType.CODING) {
-                return question.getExplanation() + "\n\n" + question.getCodingChallenge().getReferenceSolution();
+                explanation = question.getExplanation() + "\n\n" + question.getCodingChallenge().getReferenceSolution();
+            } else {
+                explanation = question.getExplanation();
             }
-            return question.getExplanation();
+        } else {
+            explanation = "Answer recorded. You'll see the explanation when the session ends.";
         }
 
-        return "Answer recorded. You'll see the explanation when the session ends.";
+        return new GiveUpResult(attempt, explanation);
+    }
+
+    /**
+     * Loads the attempt behind an id, throwing 404 if it doesn't exist and 403 if it
+     * doesn't belong to {@code user}.
+     */
+    public Attempt getAttemptForUser(Long attemptId, User user) {
+        Attempt attempt = attemptRepository.findById(attemptId)
+                .orElseThrow(() -> new AttemptNotFoundException("Attempt not found"));
+
+        if (!attempt.getUser().getId().equals(user.getId())) {
+            throw new SessionAccessDeniedException("This attempt does not belong to the current user.");
+        }
+
+        return attempt;
     }
 
     public List<Attempt> getAttemptsBySession(Long sessionId) {
@@ -138,5 +166,35 @@ public class AttemptService {
 
     public List<Attempt> getAttemptsByUserAndTopic(Long userId, Long topicId) {
         return attemptRepository.findByUserIdAndSessionQuestion_Question_Topic_Id(userId, topicId);
+    }
+
+    /**
+     * Loads a SessionQuestion and validates that the caller may submit an attempt
+     * against it: it exists, belongs to {@code user}, its session is still
+     * IN_PROGRESS, it hasn't already been answered, and (unless {@code expectedType}
+     * is null, as for give-up) its question is of the expected type.
+     */
+    private SessionQuestion loadOwnedSessionQuestion(Long sessionQuestionId, User user, QuestionType expectedType) {
+        SessionQuestion sq = sessionQuestionRepository.findById(sessionQuestionId)
+                .orElseThrow(() -> new SessionQuestionNotFoundException("SessionQuestion not found"));
+
+        if (!sq.getSession().getUser().getId().equals(user.getId())) {
+            throw new SessionAccessDeniedException("This session does not belong to the current user.");
+        }
+
+        if (sq.getSession().getStatus() != SessionStatus.IN_PROGRESS) {
+            throw new SessionAlreadyCompletedException("This session is no longer in progress.");
+        }
+
+        if (attemptRepository.existsBySessionQuestionId(sessionQuestionId)) {
+            throw new AttemptAlreadyExistsException("This question has already been answered.");
+        }
+
+        if (expectedType != null && sq.getQuestion().getQuestionType() != expectedType) {
+            throw new QuestionTypeMismatchException(
+                    "Expected a " + expectedType + " question but this question is " + sq.getQuestion().getQuestionType());
+        }
+
+        return sq;
     }
 }
