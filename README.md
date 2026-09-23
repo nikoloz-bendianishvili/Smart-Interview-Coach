@@ -33,8 +33,6 @@ Once it's up:
 > local MySQL install is already using 3306. The app talks to it internally on the default port
 > via the `mysql` service name either way.
 
-*(Swagger UI screenshot goes here.)*
-
 ## Tech stack
 
 - **Spring Boot 4.1**, Java 17
@@ -44,6 +42,7 @@ Once it's up:
 - **Docker** / Docker Compose
 - **Judge0** for sandboxed code execution and grading
 - **Anthropic API** for AI grading of open-ended answers
+- **Whisper (OpenAI-compatible speech-to-text API)** for transcribing voice answers before grading
 
 ## Architecture
 
@@ -75,9 +74,12 @@ before accepting a submission.
 **Session deadlines are real and server-enforced**, not just numbers stored for display. Every
 session gets a deadline the moment it starts - 110% of the chosen time for Real Interview, 150%
 for Free Mock, 200% of the questions' summed time budget for Custom Practice (multipliers
-configurable). Miss it and the session closes automatically, whether you ever make another request
-or not: every access re-checks the deadline, and a background sweep (`SessionSweepService`) catches
-the case where a user just walks away and never comes back. A session that hits its deadline (or
+configurable). Once the deadline (plus a short grace period for network latency) passes, the
+session is over: every endpoint re-checks the deadline before doing anything, so a late submission
+is rejected, never accepted - there's no window where a request arriving after the deadline still
+gets processed. A background sweep (`SessionSweepService`) separately marks the session closed in
+the database even if the user never makes another request at all, so its stored status doesn't
+stay stale forever. A session that hits its deadline (or
 gets completed manually) while a coding/open-ended answer is still grading doesn't get stuck or
 rejected - it moves to an `AWAITING_GRADING` state (202 response) and finishes on its own once the
 last grade lands, with no client action required.
@@ -115,6 +117,27 @@ so an `AWAITING_GRADING` session doesn't wait around once its last attempt has a
 and separately reclaims any attempt that's been stuck `PENDING` too long (e.g. the app restarted
 mid-grade).
 
+**Voice answers get an extra hop first: transcription.** `POST /{sessionQuestionId}/voice/submit`
+(multipart, after `voice/start`/`voice/stop`) uploads the actual recording. It's stored via
+`AudioStorageService` - `LocalDiskAudioStorageService` by default, kept behind an interface
+specifically so a later move to S3/R2 is a new implementation class, not a rewrite of every caller
+- and publishes `VoiceAudioSubmittedEvent` rather than triggering grading directly, since there's
+no transcript to grade yet. `TranscriptionService` (same `@Async` +
+`@TransactionalEventListener(AFTER_COMMIT)` shape as the graders above) calls a
+Whisper-compatible endpoint, saves the transcript, and then publishes the *existing*
+`VoiceAnswerCreatedEvent` itself - so `AiGradingService` grades a transcribed voice answer exactly
+the same way it grades a typed one, no special-casing needed downstream:
+
+```
+voice/submit -> store audio -> publish VoiceAudioSubmittedEvent
+        |
+        v
+TranscriptionService (AFTER_COMMIT, async) -> Whisper API -> save transcript
+        |
+        v
+publish VoiceAnswerCreatedEvent -> AiGradingService grades it like any typed answer
+```
+
 ## Running without Docker
 
 MySQL must be installed and running locally.
@@ -132,6 +155,8 @@ $env:JWT_SECRET="..."
 $env:BREVO_API_KEY="..."
 $env:SENDER_EMAIL="..."
 $env:SEED_ENABLED="true"
+$env:OPENAI_API_KEY="..."       # optional - voice-answer transcription; blank skips it
+$env:AUDIO_STORAGE_DIR="..."    # optional - defaults to ./uploads/audio
 .\mvnw.cmd spring-boot:run
 ```
 
@@ -140,7 +165,7 @@ schema work beyond creating the empty database.
 
 ## Testing
 
-120+ tests across three layers, all against an in-memory H2 database:
+137 tests across three layers, all against an in-memory H2 database:
 
 - **Repository tests** (`src/test/java/interview_coach/repositorytests`) - full
   `@SpringBootTest` + `@Transactional` integration tests (auto-rollback), not sliced
@@ -188,13 +213,17 @@ Written down deliberately rather than left implicit - these are choices, not ove
 - **AI grading prompt has no injection-hardening yet** (no delimiters or "treat this as untrusted
   data" framing around the user's submitted answer). A known next step before this touches
   anything beyond demo data.
-- **No frontend-facing endpoints yet** (public topic listing, a session *history list*) -
-  deliberately deferred until the Vite frontend exists to design them against. A single session's
-  own status/summary is already readable (`GET /api/sessions/{id}`) - it's a listing across a
-  user's sessions that's still missing.
-- **Voice-answer audio itself is out of scope.** The start/stop endpoints record timing only;
-  `VoiceAnswer.audioFileUrl` exists as a column but nothing uploads to it, and there's no
-  audio-storage integration yet - that's frontend/infrastructure work for when voice UI lands.
+- **No public topic-listing endpoint yet** - deliberately deferred until the Vite frontend exists
+  to design it against. Session history, by contrast, is implemented: `GET /api/sessions/me` lists
+  every session belonging to the caller (newest first), and a single session's own status/summary
+  (`GET /api/sessions/{id}`) now also includes the caller's own answer/code/text per question and,
+  for MCQ, the correct option once the session is no longer in progress.
+- **Voice-answer audio storage is local disk, not cloud, for now.** Upload, storage, and
+  transcription are all implemented (see "Async grading" above) - `LocalDiskAudioStorageService`
+  is the only `AudioStorageService` implementation, chosen deliberately for dev/demo simplicity.
+  Swapping in S3/R2 later is a new implementation class behind the same interface, not a rewrite
+  of `AttemptService`/`TranscriptionService`. There's also no playback/download endpoint for the
+  stored audio yet - only the transcript is ever exposed back to the client.
 - **A started-but-never-submitted voice recording** leaves an orphan `VoiceAnswer` row (no
   `Attempt` ever gets attached to it). Harmless - nothing references it, so it can't block a
   session from completing - but the scheduled sweep doesn't clean these up yet.
@@ -204,12 +233,19 @@ Written down deliberately rather than left implicit - these are choices, not ove
 **Implemented:** registration/login/email verification, user profile management, full session
 lifecycle (start/complete/read-status) across all three session types with server-enforced,
 per-type deadlines and automatic expiry (lazy check-on-access plus a scheduled sweep);
-MCQ/coding/open-ended attempt submission with async grading, a polling endpoint, and server-side
-voice-answer timing; Real Interview's strict in-order question flow with a one-at-a-time
-current-question endpoint; and a full admin surface (user moderation, topic CRUD,
-question/option/coding-challenge/test-case CRUD - including full-detail question browsing with
-the answer key, admin-only).
+MCQ/coding/open-ended attempt submission with async grading and a polling endpoint; server-side
+voice-answer timing plus full audio upload -> storage -> transcription -> AI grading; Real
+Interview's strict in-order question flow with a one-at-a-time current-question endpoint; per-user
+session history (`GET /api/sessions/me`) plus a richer per-session review (own answers, coding
+test results, and the correct MCQ option once a session is no longer in progress); and a full
+admin surface (user moderation, topic CRUD, question/option/coding-challenge/test-case CRUD -
+including full-detail question browsing with the answer key, admin-only).
 
 **Deliberately deferred**, see above: public topics list and a cross-session history *list*
 (frontend not built yet), request validation on three controllers, `@RestControllerAdvice`, AI
-prompt injection hardening, database migrations, voice-answer audio upload/storage.
+prompt injection hardening (applies to both typed and transcribed voice answers), database
+migrations, cloud audio storage and an audio playback endpoint.
+
+## License
+
+[MIT](LICENSE)

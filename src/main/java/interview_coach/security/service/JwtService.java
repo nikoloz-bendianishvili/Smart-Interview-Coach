@@ -57,14 +57,6 @@ public class JwtService {
         return extractEveryClaim(token).getSubject();
     }
 
-    public String extractRole(String token) {
-        return extractEveryClaim(token).get("role", String.class);
-    }
-
-    public String extractWebName(String token) {
-        return extractEveryClaim(token).get("webName", String.class);
-    }
-
     private SecretKey getSigningKey() {
         byte[] keyBytes = Base64.getDecoder().decode(secretKey);
         return Keys.hmacShaKeyFor(keyBytes);

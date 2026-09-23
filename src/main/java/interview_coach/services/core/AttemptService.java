@@ -8,8 +8,10 @@ import interview_coach.enums.SessionStatus;
 import interview_coach.enums.SessionType;
 import interview_coach.events.CodeSubmissionCreatedEvent;
 import interview_coach.events.VoiceAnswerCreatedEvent;
+import interview_coach.events.VoiceAudioSubmittedEvent;
 import interview_coach.exceptions.AttemptAlreadyExistsException;
 import interview_coach.exceptions.AttemptNotFoundException;
+import interview_coach.exceptions.InvalidAudioUploadException;
 import interview_coach.exceptions.InvalidVoiceRecordingStateException;
 import interview_coach.exceptions.OptionNotFoundException;
 import interview_coach.exceptions.QuestionNotYetAvailableException;
@@ -18,10 +20,12 @@ import interview_coach.exceptions.SessionAccessDeniedException;
 import interview_coach.exceptions.SessionAlreadyCompletedException;
 import interview_coach.exceptions.SessionQuestionNotFoundException;
 import interview_coach.repositories.*;
+import interview_coach.services.storage.AudioStorageService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -40,6 +44,7 @@ public class AttemptService {
     private final VoiceAnswerRepository voiceAnswerRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final SessionService sessionService;
+    private final AudioStorageService audioStorageService;
     private final Clock clock;
 
     /**
@@ -156,14 +161,7 @@ public class AttemptService {
             effectiveTimeTakenSeconds = (int) Duration.between(recording.getStartedAt(), recording.getEndedAt()).getSeconds();
         }
 
-        Attempt attempt = Attempt.builder()
-                .sessionQuestion(sq)
-                .user(user)
-                .textAnswer(answerText)
-                .timeTakenSeconds(effectiveTimeTakenSeconds)
-                .status(AttemptStatus.PENDING)
-                .build();
-        attemptRepository.save(attempt);
+        Attempt attempt = savePendingAttempt(sq, user, answerText, effectiveTimeTakenSeconds);
 
         VoiceAnswer voiceAnswer = existingRecording.orElseGet(() -> VoiceAnswer.builder()
                 .sessionQuestion(sq)
@@ -176,6 +174,65 @@ public class AttemptService {
         eventPublisher.publishEvent(new VoiceAnswerCreatedEvent(voiceAnswer.getId()));
 
         return attempt;
+    }
+
+    /**
+     * The audio counterpart to submitOpenEndedAttempt: the client uploads the recording itself
+     * (from voice/start + voice/stop) instead of typed text. There's no transcript yet at this
+     * point - TranscriptionService fills audioTranscript (and mirrors it onto
+     * Attempt.textAnswer) asynchronously, then publishes VoiceAnswerCreatedEvent itself so
+     * AiGradingService grades it exactly as it grades a plain-text answer.
+     */
+    @Transactional
+    public Attempt submitVoiceAttempt(Long sessionQuestionId, User user, MultipartFile audio) {
+        SessionQuestion sq = loadOwnedSessionQuestion(sessionQuestionId, user, QuestionType.OPEN_ENDED);
+
+        if (audio == null || audio.isEmpty()) {
+            throw new InvalidAudioUploadException("No audio file was uploaded.");
+        }
+        String contentType = audio.getContentType();
+        if (contentType == null || !contentType.startsWith("audio/")) {
+            throw new InvalidAudioUploadException("Uploaded file is not an audio recording.");
+        }
+
+        VoiceAnswer voiceAnswer = voiceAnswerRepository.findBySessionQuestionId(sessionQuestionId)
+                .filter(va -> va.getStartedAt() != null)
+                .orElseThrow(() -> new InvalidVoiceRecordingStateException(
+                        "No active voice recording to submit - call start (and stop) first."));
+
+        // stop is normally called before submit, but a client that jumps straight from stop-less
+        // recording to submit shouldn't be forced into an extra round trip - treat this as an
+        // implicit stop rather than rejecting it outright.
+        if (voiceAnswer.getEndedAt() == null) {
+            voiceAnswer.setEndedAt(LocalDateTime.now(clock));
+        }
+        int timeTakenSeconds = (int) Duration.between(voiceAnswer.getStartedAt(), voiceAnswer.getEndedAt()).getSeconds();
+
+        Attempt attempt = savePendingAttempt(sq, user, null, timeTakenSeconds);
+
+        String location = audioStorageService.store(sessionQuestionId, audio);
+        voiceAnswer.setAttempt(attempt);
+        voiceAnswer.setAudioFileUrl(location);
+        voiceAnswerRepository.save(voiceAnswer);
+
+        eventPublisher.publishEvent(new VoiceAudioSubmittedEvent(voiceAnswer.getId()));
+
+        return attempt;
+    }
+
+    /**
+     * Builds and saves the PENDING Attempt shared by both the typed-text and audio-upload
+     * open-ended paths - they differ only in what (if anything) is known as textAnswer yet.
+     */
+    private Attempt savePendingAttempt(SessionQuestion sq, User user, String textAnswer, int timeTakenSeconds) {
+        Attempt attempt = Attempt.builder()
+                .sessionQuestion(sq)
+                .user(user)
+                .textAnswer(textAnswer)
+                .timeTakenSeconds(timeTakenSeconds)
+                .status(AttemptStatus.PENDING)
+                .build();
+        return attemptRepository.save(attempt);
     }
 
     @Transactional
@@ -224,14 +281,6 @@ public class AttemptService {
 
     public List<Attempt> getAttemptsBySession(Long sessionId) {
         return attemptRepository.findBySessionQuestion_Session_Id(sessionId);
-    }
-
-    public List<Attempt> getAttemptsByUser(Long userId) {
-        return attemptRepository.findByUserId(userId);
-    }
-
-    public List<Attempt> getAttemptsByUserAndTopic(Long userId, Long topicId) {
-        return attemptRepository.findByUserIdAndSessionQuestion_Question_Topic_Id(userId, topicId);
     }
 
     /**

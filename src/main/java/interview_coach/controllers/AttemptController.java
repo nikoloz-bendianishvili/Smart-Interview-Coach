@@ -15,9 +15,11 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import interview_coach.repositories.CodeSubmissionRepository;
@@ -116,6 +118,26 @@ public class AttemptController {
         return ResponseEntity.noContent().build();
     }
 
+    @Operation(summary = "Submit a voice answer's audio", description = "Uploads the recorded " +
+            "audio for a voice answer started via .../voice/start (stop is implicit if not " +
+            "already called). Transcription and grading both happen asynchronously - poll " +
+            "GET /{attemptId} the same way as for code/typed-answer submits.")
+    @PostMapping(value = "/{sessionQuestionId}/voice/submit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<AttemptResponse> submitVoiceAnswer(
+            Authentication authentication,
+            @PathVariable Long sessionQuestionId,
+            @RequestPart("audio") MultipartFile audio,
+            UriComponentsBuilder uriBuilder) {
+
+        User user = userService.getUserByEmail(authentication.getName());
+        Attempt attempt = attemptService.submitVoiceAttempt(sessionQuestionId, user, audio);
+
+        return ResponseEntity
+                .status(HttpStatus.ACCEPTED)
+                .location(uriBuilder.path("/api/attempts/{id}").buildAndExpand(attempt.getId()).toUri())
+                .body(toResponse(attempt));
+    }
+
     @PostMapping("/{sessionQuestionId}/give-up")
     public ResponseEntity<GiveUpResponse> giveUp(
             Authentication authentication,
@@ -157,6 +179,7 @@ public class AttemptController {
 
         Integer passedTestCount = null;
         Integer totalTestCount = null;
+        String executionOutput = null;
         Double aiScore = null;
         String aiFeedback = null;
         GradingStatus gradingStatus = null;
@@ -166,6 +189,7 @@ public class AttemptController {
             if (submission != null) {
                 passedTestCount = submission.getPassedTestCount();
                 totalTestCount = submission.getTotalTestCount();
+                executionOutput = submission.getExecutionOutput();
                 gradingStatus = submission.getStatus();
             }
         } else if (questionType == QuestionType.OPEN_ENDED) {
@@ -188,6 +212,7 @@ public class AttemptController {
                 gradingStatus,
                 passedTestCount,
                 totalTestCount,
+                executionOutput,
                 aiScore,
                 aiFeedback
         );

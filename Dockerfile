@@ -8,6 +8,12 @@ WORKDIR /build
 COPY pom.xml .
 RUN mvn -B -q dependency:go-offline
 
+# lombok.config must be alongside pom.xml before compilation - it's what makes
+# Lombok copy Spring's @Qualifier from a field onto the generated
+# @RequiredArgsConstructor constructor parameter (see JudgeService/TranscriptionService,
+# which now share two RestClient beans). Without it here, the image builds fine but the
+# app fails to start with a NoUniqueBeanDefinitionException.
+COPY lombok.config .
 COPY src ./src
 RUN mvn -B -q clean package -DskipTests
 

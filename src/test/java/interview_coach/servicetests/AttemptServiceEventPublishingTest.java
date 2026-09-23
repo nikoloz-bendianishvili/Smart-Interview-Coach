@@ -9,6 +9,7 @@ import interview_coach.events.VoiceAnswerCreatedEvent;
 import interview_coach.repositories.*;
 import interview_coach.services.core.AttemptService;
 import interview_coach.services.core.SessionService;
+import interview_coach.services.storage.AudioStorageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,6 +47,8 @@ class AttemptServiceEventPublishingTest {
     private ApplicationEventPublisher eventPublisher;
     @Mock
     private SessionService sessionService;
+    @Mock
+    private AudioStorageService audioStorageService;
 
     private AttemptService attemptService;
 
@@ -61,6 +64,7 @@ class AttemptServiceEventPublishingTest {
                 voiceAnswerRepository,
                 eventPublisher,
                 sessionService,
+                audioStorageService,
                 Clock.systemDefaultZone()
         );
 

@@ -5,7 +5,6 @@ import interview_coach.entities.CodingChallenge;
 import interview_coach.entities.Option;
 import interview_coach.entities.Question;
 import interview_coach.entities.TestCase;
-import interview_coach.enums.Difficulty;
 import interview_coach.enums.QuestionType;
 import interview_coach.exceptions.OptionNotFoundException;
 import interview_coach.exceptions.QuestionNotFoundException;
@@ -82,10 +81,6 @@ public class QuestionService {
 
     public List<Question> getQuestionsByTopicId(Long topicId) {
         return questionRepository.findByTopicIdAndActiveTrue(topicId);
-    }
-
-    public List<Question> getByDifficulty(Difficulty difficulty) {
-        return questionRepository.findByDifficultyAndActiveTrue(difficulty);
     }
 
     public List<Question> getByQuestionType(QuestionType questionType) {

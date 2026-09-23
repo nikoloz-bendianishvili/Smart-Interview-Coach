@@ -19,6 +19,9 @@ application-local.properties
 application-local.yml
 *.env
 
+### Locally-stored voice-answer audio (LocalDiskAudioStorageService) ###
+/uploads/
+
 ### IntelliJ IDEA ###
 .idea
 *.iws

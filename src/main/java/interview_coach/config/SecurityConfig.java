@@ -37,6 +37,12 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        // Spring MVC's default error handling re-dispatches any non-2xx response
+                        // to /error - without this, an anonymous caller's real 400/404/405/500
+                        // gets masked as a generic 403 from here instead (Http403ForbiddenEntryPoint
+                        // rejecting the unauthenticated /error re-dispatch), which is confusing to
+                        // debug and leaks no useful status to legitimate anonymous clients either.
+                        .requestMatchers("/error").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/topics/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()

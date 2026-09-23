@@ -6,6 +6,7 @@ import interview_coach.entities.*;
 import interview_coach.enums.QuestionType;
 import interview_coach.enums.SessionStatus;
 import interview_coach.enums.SessionType;
+import interview_coach.repositories.CodeSubmissionRepository;
 import interview_coach.repositories.VoiceAnswerRepository;
 import interview_coach.services.core.*;
 import io.swagger.v3.oas.annotations.Operation;
@@ -41,6 +42,7 @@ public class SessionController {
     private final OptionService optionService;
     private final TestCaseService testCaseService;
     private final VoiceAnswerRepository voiceAnswerRepository;
+    private final CodeSubmissionRepository codeSubmissionRepository;
 
     @Operation(summary = "Start a session", description = "Question selection depends on sessionType: " +
             "CUSTOM_PRACTICE needs topicId + questionType + numOfQuestions; REAL_INTERVIEW derives the " +
@@ -83,6 +85,40 @@ public class SessionController {
         );
 
         return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "List my past sessions", description = "Every session belonging to the " +
+            "current user, newest first - IN_PROGRESS/AWAITING_GRADING ones included alongside " +
+            "COMPLETED ones. A lightweight card per session (score/max, type, status, times); fetch " +
+            "GET /{sessionId} for the per-question breakdown of any one of them.")
+    @GetMapping("/me")
+    public ResponseEntity<List<SessionHistoryItemResponse>> getMySessions(Authentication authentication) {
+        User user = userService.getUserByEmail(authentication.getName());
+        List<SessionHistoryItemResponse> response = sessionService.getSessionsByUserDesc(user.getId()).stream()
+                .map(this::toHistoryItem)
+                .toList();
+
+        return ResponseEntity.ok(response);
+    }
+
+    private SessionHistoryItemResponse toHistoryItem(Session session) {
+        int maxScore = sessionService.getSessionQuestions(session.getId()).stream()
+                .mapToInt(sq -> {
+                    Integer questionMaxScore = sq.getQuestion().getScore();
+                    return questionMaxScore != null ? questionMaxScore : 0;
+                })
+                .sum();
+
+        return new SessionHistoryItemResponse(
+                session.getId(),
+                session.getSessionType(),
+                session.getStatus(),
+                session.getTotalScore(),
+                maxScore,
+                session.getStartTime(),
+                session.getEndTime(),
+                session.isEndedByTimeout()
+        );
     }
 
     @Operation(summary = "Get the current question", description = "The lowest orderIndex question in " +
@@ -182,16 +218,41 @@ public class SessionController {
             maxScore += questionMaxScore != null ? questionMaxScore : 0;
         }
 
+        // Correct MCQ options are only worth showing once the session itself can no longer be
+        // played - there's no legitimate reason for a client to need them before that, and this
+        // keeps the rule simple rather than reasoning per-question about it.
+        boolean sessionOver = session.getStatus() != SessionStatus.IN_PROGRESS;
+
         List<AttemptSummaryResponse> results = new ArrayList<>();
         for (Attempt attempt : attempts) {
             Question question = attempt.getSessionQuestion().getQuestion();
             Integer questionMaxScore = question.getScore();
 
+            Integer correctOption = null;
+            String textAnswer = null;
             String aiFeedback = null;
-            if (question.getQuestionType() == QuestionType.OPEN_ENDED) {
+            String sourceCode = null;
+            Integer passedTestCount = null;
+            Integer totalTestCount = null;
+            String executionOutput = null;
+
+            if (question.getQuestionType() == QuestionType.MCQ) {
+                if (sessionOver) {
+                    correctOption = optionService.getOptionByQuestionId(question.getId()).getCorrectOption();
+                }
+            } else if (question.getQuestionType() == QuestionType.OPEN_ENDED) {
+                textAnswer = attempt.getTextAnswer();
                 aiFeedback = voiceAnswerRepository.findByAttemptId(attempt.getId())
                         .map(VoiceAnswer::getAiFeedback)
                         .orElse(null);
+            } else if (question.getQuestionType() == QuestionType.CODING) {
+                CodeSubmission submission = codeSubmissionRepository.findByAttemptId(attempt.getId()).orElse(null);
+                if (submission != null) {
+                    sourceCode = submission.getSourceCode();
+                    passedTestCount = submission.getPassedTestCount();
+                    totalTestCount = submission.getTotalTestCount();
+                    executionOutput = submission.getExecutionOutput();
+                }
             }
 
             results.add(new AttemptSummaryResponse(
@@ -202,8 +263,16 @@ public class SessionController {
                     attempt.getStatus(),
                     attempt.getScore(),
                     questionMaxScore,
+                    attempt.getTimeTakenSeconds(),
                     question.getExplanation(),
-                    aiFeedback
+                    attempt.getSelectedOption(),
+                    correctOption,
+                    textAnswer,
+                    aiFeedback,
+                    sourceCode,
+                    passedTestCount,
+                    totalTestCount,
+                    executionOutput
             ));
         }
 

@@ -25,6 +25,8 @@ sender: test@example.com
 app:
   frontend:
     url: http://localhost:8080
+  audio:
+    storage-dir: ./target/test-audio
   session:
     time-limit-multiplier:
       real-interview: 1.10
@@ -43,4 +45,10 @@ judge0:
 ai:
   model: claude-sonnet-5
   api:
+    key: test-key
+
+transcription:
+  model: whisper-1
+  api:
+    url: http://localhost:9999
     key: test-key

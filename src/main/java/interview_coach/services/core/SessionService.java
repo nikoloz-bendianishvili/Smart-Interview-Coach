@@ -159,10 +159,10 @@ public class SessionService {
      */
     public boolean closeIfExpired(Session session) {
         if (session.getStatus() != SessionStatus.IN_PROGRESS) {
-            // COMPLETED/ABANDONED are already terminal; AWAITING_GRADING isn't a deadline
-            // concern at all (nothing left to expire) - re-checking whether its grading has
-            // since finished is completeSession's/the sweep's job, not this one's.
-            return session.getStatus() == SessionStatus.COMPLETED || session.getStatus() == SessionStatus.ABANDONED;
+            // COMPLETED is already terminal; AWAITING_GRADING isn't a deadline concern at all
+            // (nothing left to expire) - re-checking whether its grading has since finished is
+            // completeSession's/the sweep's job, not this one's.
+            return session.getStatus() == SessionStatus.COMPLETED;
         }
         if (session.getSessionDeadline() == null) {
             return false; // shouldn't happen post-Phase-1, but never treat "no deadline" as expired

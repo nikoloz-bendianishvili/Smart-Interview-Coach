@@ -11,6 +11,22 @@ public record AttemptSummaryResponse(
         AttemptStatus status,
         Integer score,
         Integer maxScore,
+        Integer timeTakenSeconds,
         String explanation,
-        String aiFeedback
+
+        // MCQ only. correctOption is null while the session is still IN_PROGRESS, even though
+        // this question has already been answered - kept simple/conservative rather than reasoning
+        // per-question about whether revealing it early could matter.
+        Integer selectedOption,
+        Integer correctOption,
+
+        // OPEN_ENDED only
+        String textAnswer,
+        String aiFeedback,
+
+        // CODING only
+        String sourceCode,
+        Integer passedTestCount,
+        Integer totalTestCount,
+        String executionOutput
 ) {}

@@ -27,6 +27,8 @@ public class AuthService {
 
     public String register(RegisterRequest registerRequest) {
         User user = User.builder()
+                .firstName(registerRequest.getFirstName())
+                .lastName(registerRequest.getLastName())
                 .email(registerRequest.getEmail())
                 .passwordHash(registerRequest.getPassword())
                 .webName(registerRequest.getWebName()).role(Role.USER)

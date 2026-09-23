@@ -21,6 +21,7 @@ public record AttemptResponse(
         // CODING only
         Integer passedTestCount,
         Integer totalTestCount,
+        String executionOutput,
 
         // OPEN_ENDED only
         Double aiScore,

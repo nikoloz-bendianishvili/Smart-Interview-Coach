@@ -12,6 +12,7 @@ import interview_coach.exceptions.SessionAlreadyCompletedException;
 import interview_coach.repositories.*;
 import interview_coach.services.core.AttemptService;
 import interview_coach.services.core.SessionService;
+import interview_coach.services.storage.AudioStorageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -48,6 +49,8 @@ class AttemptServiceOwnershipTest {
     private ApplicationEventPublisher eventPublisher;
     @Mock
     private SessionService sessionService;
+    @Mock
+    private AudioStorageService audioStorageService;
 
     private AttemptService attemptService;
 
@@ -64,6 +67,7 @@ class AttemptServiceOwnershipTest {
                 voiceAnswerRepository,
                 eventPublisher,
                 sessionService,
+                audioStorageService,
                 Clock.systemDefaultZone()
         );
         // closeIfExpired's mocked default (false) means "not expired" - preserves this test

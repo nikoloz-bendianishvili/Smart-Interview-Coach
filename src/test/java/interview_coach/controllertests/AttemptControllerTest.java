@@ -11,6 +11,7 @@ import interview_coach.entities.User;
 import interview_coach.enums.AttemptStatus;
 import interview_coach.enums.QuestionType;
 import interview_coach.exceptions.AttemptAlreadyExistsException;
+import interview_coach.exceptions.InvalidAudioUploadException;
 import interview_coach.exceptions.InvalidVoiceRecordingStateException;
 import interview_coach.exceptions.SessionAccessDeniedException;
 import interview_coach.exceptions.SessionQuestionNotFoundException;
@@ -25,6 +26,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -35,6 +37,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -87,6 +90,12 @@ class AttemptControllerTest {
         Question question = Question.builder().id(1L).questionType(QuestionType.CODING).score(10).build();
         SessionQuestion sq = SessionQuestion.builder().id(2L).question(question).orderIndex(1).build();
         return Attempt.builder().id(101L).sessionQuestion(sq).status(AttemptStatus.PENDING).timeTakenSeconds(60).build();
+    }
+
+    private Attempt pendingVoiceAttempt() {
+        Question question = Question.builder().id(1L).questionType(QuestionType.OPEN_ENDED).score(10).build();
+        SessionQuestion sq = SessionQuestion.builder().id(2L).question(question).orderIndex(1).build();
+        return Attempt.builder().id(102L).sessionQuestion(sq).status(AttemptStatus.PENDING).timeTakenSeconds(45).build();
     }
 
     @Test
@@ -227,6 +236,49 @@ class AttemptControllerTest {
                 .when(attemptService).stopVoiceRecording(anyLong(), any(User.class));
 
         mockMvc.perform(post("/api/attempts/2/voice/stop").with(csrf()))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(username = USER_EMAIL)
+    void submitVoiceAnswer_returns202WithLocationAndPendingStatus() throws Exception {
+        when(userService.getUserByEmail(USER_EMAIL)).thenReturn(User.builder().id(1L).email(USER_EMAIL).build());
+        when(attemptService.submitVoiceAttempt(anyLong(), any(User.class), any()))
+                .thenReturn(pendingVoiceAttempt());
+        when(voiceAnswerRepository.findByAttemptId(102L)).thenReturn(Optional.empty());
+
+        MockMultipartFile audio = new MockMultipartFile("audio", "answer.webm", "audio/webm", "fake-audio-bytes".getBytes());
+
+        mockMvc.perform(multipart("/api/attempts/2/voice/submit").file(audio).with(csrf()))
+                .andExpect(status().isAccepted())
+                .andExpect(header().string("Location", org.hamcrest.Matchers.containsString("/api/attempts/102")))
+                .andExpect(jsonPath("$.status").value("PENDING"));
+    }
+
+    @Test
+    @WithMockUser(username = USER_EMAIL)
+    void submitVoiceAnswer_nonAudioContentType_returns400() throws Exception {
+        when(userService.getUserByEmail(USER_EMAIL)).thenReturn(User.builder().id(1L).email(USER_EMAIL).build());
+        when(attemptService.submitVoiceAttempt(anyLong(), any(User.class), any()))
+                .thenThrow(new InvalidAudioUploadException("Uploaded file is not an audio recording."));
+
+        MockMultipartFile notAudio = new MockMultipartFile("audio", "answer.txt", "text/plain", "not audio".getBytes());
+
+        mockMvc.perform(multipart("/api/attempts/2/voice/submit").file(notAudio).with(csrf()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(username = USER_EMAIL)
+    void submitVoiceAnswer_withNoPriorStart_returns409() throws Exception {
+        when(userService.getUserByEmail(USER_EMAIL)).thenReturn(User.builder().id(1L).email(USER_EMAIL).build());
+        when(attemptService.submitVoiceAttempt(anyLong(), any(User.class), any()))
+                .thenThrow(new InvalidVoiceRecordingStateException(
+                        "No active voice recording to submit - call start (and stop) first."));
+
+        MockMultipartFile audio = new MockMultipartFile("audio", "answer.webm", "audio/webm", "fake-audio-bytes".getBytes());
+
+        mockMvc.perform(multipart("/api/attempts/2/voice/submit").file(audio).with(csrf()))
                 .andExpect(status().isConflict());
     }
 }

@@ -8,6 +8,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: ${DDL_AUTO:update}
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 26MB
 
 jwt:
   secret: ${JWT_SECRET}
@@ -24,6 +28,8 @@ app:
     url: ${FRONTEND_URL:http://localhost:8080}
   seed:
     enabled: ${SEED_ENABLED:false}
+  audio:
+    storage-dir: ${AUDIO_STORAGE_DIR:./uploads/audio}
   session:
     time-limit-multiplier:
       real-interview: ${REAL_INTERVIEW_TIME_MULTIPLIER:1.10}
@@ -43,3 +49,9 @@ ai:
   model: ${AI_MODEL:claude-sonnet-5}
   api:
     key: ${ANTHROPIC_API_KEY:}
+
+transcription:
+  model: ${TRANSCRIPTION_MODEL:whisper-1}
+  api:
+    url: ${TRANSCRIPTION_API_URL:https://api.openai.com/v1}
+    key: ${OPENAI_API_KEY:}
