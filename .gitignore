@@ -40,3 +40,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Claude Code instructions (local only, not published) ###
+CLAUDE.md
