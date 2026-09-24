@@ -31,6 +31,9 @@ public class SessionQuestion {
     @JoinColumn(name = "question_id", nullable = false)
     private Question question;
 
+    @OneToOne(mappedBy = "sessionQuestion", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Attempt attempt;
+
     @Column(nullable = false)
     private Integer orderIndex;
 }

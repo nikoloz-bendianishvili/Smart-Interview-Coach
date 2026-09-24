@@ -49,7 +49,7 @@ public class TestCaseRepositoryTest {
         Question q = Question.builder().topic(t).statement("Q").questionType(QuestionType.CODING).difficulty(Difficulty.MEDIUM).timeLimit(60).build();
         questionRepository.save(q);
 
-        CodingChallenge cc = CodingChallenge.builder().questionId(q).starterCode("//").build();
+        CodingChallenge cc = CodingChallenge.builder().question(q).starterCode("//").build();
         codingChallengeRepository.save(cc);
 
         TestCase tc = TestCase.builder().codingChallenge(cc).input("1\n").expectedOutput("1\n").isHidden(false).build();

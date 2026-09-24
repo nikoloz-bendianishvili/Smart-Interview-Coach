@@ -31,8 +31,8 @@ public class OptionService {
         optionRepository.save(option);
     }
 
-    @Transactional
-    public void deleteOption(Long optionId) {
-        optionRepository.deleteById(optionId);
+    public Option getOptionByQuestionId(Long questionId) {
+        return optionRepository.findByQuestionId(questionId)
+                .orElseThrow(() -> new OptionNotFoundException("Option not found for question id: " + questionId));
     }
 }

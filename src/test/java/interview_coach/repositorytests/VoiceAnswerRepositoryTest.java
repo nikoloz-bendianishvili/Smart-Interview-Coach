@@ -46,7 +46,7 @@ public class VoiceAnswerRepositoryTest {
 
     @Test
     void saveAndFindByAttemptAndStatus() {
-        User u = User.builder().firstName("V").lastName("A").webName("u5").email("u5@example.com").passwordHash("p").role(Role.USER).isActive(true).build();
+        User u = User.builder().firstName("V").lastName("A").webName("u5").email("u5@example.com").passwordHash("p").role(Role.USER).build();
         userRepository.save(u);
 
         Topic t = Topic.builder().topicName("System Design").build();
@@ -75,11 +75,12 @@ public class VoiceAnswerRepositoryTest {
                 .build();
         sessionQuestionRepository.save(sq);
 
-        Attempt a = Attempt.builder().sessionQuestion(sq).user(u).build();
+        Attempt a = Attempt.builder().sessionQuestion(sq).user(u).status(AttemptStatus.PENDING).build();
         attemptRepository.save(a);
 
         VoiceAnswer va = VoiceAnswer.builder()
                 .attempt(a)
+                .sessionQuestion(sq)
                 .audioTranscript("hi")
                 .gradingStatus(GradingStatus.PENDING)
                 .build();

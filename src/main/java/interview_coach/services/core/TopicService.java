@@ -29,7 +29,10 @@ public class TopicService {
 
     @Transactional
     public void deleteTopic(Long topicId) {
-        if (questionRepository.findByTopicId((topicId)) != null) {
+        if (!topicRepository.existsById(topicId)) {
+            throw new TopicNotFoundException("Topic not found with id: " + topicId);
+        }
+        if (questionRepository.countByTopicId(topicId) > 0) {
             throw new IllegalStateException("Cannot delete topic with existing questions attached.");
         }
         topicRepository.deleteById(topicId);
@@ -49,4 +52,8 @@ public class TopicService {
         return topicRepository.findAll();
     }
 
+    public Topic getTopicById(Long aLong) {
+        return topicRepository.findById(aLong)
+                .orElseThrow(() -> new TopicNotFoundException("Topic not found with id: " + aLong));
+    }
 }

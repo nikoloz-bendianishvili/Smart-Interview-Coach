@@ -5,7 +5,6 @@ import interview_coach.entities.CodingChallenge;
 import interview_coach.entities.Option;
 import interview_coach.entities.Question;
 import interview_coach.entities.TestCase;
-import interview_coach.enums.Difficulty;
 import interview_coach.enums.QuestionType;
 import interview_coach.exceptions.OptionNotFoundException;
 import interview_coach.exceptions.QuestionNotFoundException;
@@ -62,7 +61,10 @@ public class QuestionService {
 
     @Transactional
     public void deleteQuestion(Long questionId) {
-        questionRepository.deleteById(questionId);
+        Question question = questionRepository.findById(questionId)
+                .orElseThrow(() -> new QuestionNotFoundException("Question not found"));
+        question.setActive(false);
+        questionRepository.save(question);
     }
 
     @Transactional
@@ -78,23 +80,28 @@ public class QuestionService {
     }
 
     public List<Question> getQuestionsByTopicId(Long topicId) {
-        return questionRepository.findByTopicId(topicId);
-    }
-
-    public List<Question> getByDifficulty(Difficulty difficulty) {
-        return questionRepository.findByDifficulty(difficulty);
+        return questionRepository.findByTopicIdAndActiveTrue(topicId);
     }
 
     public List<Question> getByQuestionType(QuestionType questionType) {
-        return questionRepository.findByQuestionType(questionType);
+        return questionRepository.findByQuestionTypeAndActiveTrue(questionType);
     }
 
     public List<Question> getByTopicIdAndQuestionType(Long topicId, QuestionType questionType) {
-        return questionRepository.findByTopicIdAndQuestionType(topicId, questionType);
+        return questionRepository.findByTopicIdAndQuestionTypeAndActiveTrue(topicId, questionType);
     }
 
     public Option getOptionsByQuestionId(Long questionId) {
         return optionRepository.findByQuestionId(questionId)
                 .orElseThrow(() -> new OptionNotFoundException("No options found for question id: " + questionId));
+    }
+
+    public Question getQuestionById(Long questionId) {
+        return questionRepository.findById(questionId)
+                .orElseThrow(() -> new QuestionNotFoundException("Question not found with id: " + questionId));
+    }
+
+    public List<Question> getAllQuestions() {
+        return questionRepository.findAll();
     }
 }

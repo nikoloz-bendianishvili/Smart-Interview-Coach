@@ -5,6 +5,5 @@ public record UserUpdateDTO(
         String lastName,
         String webName,
         String email,
-        String targetRole,
-        String password
+        String targetRole
 ) {}

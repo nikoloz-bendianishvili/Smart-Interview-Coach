@@ -1,6 +1,17 @@
 spring:
   application:
     name: interview-coach
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/interview_coach}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: ${DDL_AUTO:update}
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 26MB
 
 jwt:
   secret: ${JWT_SECRET}
@@ -15,3 +26,32 @@ sender: ${SENDER_EMAIL}
 app:
   frontend:
     url: ${FRONTEND_URL:http://localhost:8080}
+  seed:
+    enabled: ${SEED_ENABLED:false}
+  audio:
+    storage-dir: ${AUDIO_STORAGE_DIR:./uploads/audio}
+  session:
+    time-limit-multiplier:
+      real-interview: ${REAL_INTERVIEW_TIME_MULTIPLIER:1.10}
+      free-mock: ${FREE_MOCK_TIME_MULTIPLIER:1.50}
+      custom-practice: ${CUSTOM_PRACTICE_TIME_MULTIPLIER:2.00}
+    grace-period-seconds: ${SESSION_GRACE_PERIOD_SECONDS:30}
+    sweep-interval-ms: ${SESSION_SWEEP_INTERVAL_MS:60000}
+  grading:
+    stale-pending-minutes: ${STALE_PENDING_MINUTES:30}
+
+judge0:
+  api:
+    url: ${JUDGE0_API_URL:https://judge0-ce.p.rapidapi.com}
+    key: ${JUDGE0_API_KEY:}
+
+ai:
+  model: ${AI_MODEL:claude-sonnet-5}
+  api:
+    key: ${ANTHROPIC_API_KEY:}
+
+transcription:
+  model: ${TRANSCRIPTION_MODEL:whisper-1}
+  api:
+    url: ${TRANSCRIPTION_API_URL:https://api.openai.com/v1}
+    key: ${OPENAI_API_KEY:}

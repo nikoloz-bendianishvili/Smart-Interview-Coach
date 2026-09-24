@@ -1,5 +1,6 @@
 package interview_coach.entities;
 
+import interview_coach.enums.AttemptStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -42,7 +43,9 @@ public class Attempt {
 
     private Integer timeTakenSeconds;
 
-    private boolean wasSkipped;
+    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    private AttemptStatus status;
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)

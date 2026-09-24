@@ -14,5 +14,11 @@ public interface VoiceAnswerRepository extends JpaRepository<VoiceAnswer, Long> 
     Optional<VoiceAnswer> findByAttemptId(Long attemptId);
 
     List<VoiceAnswer> findByGradingStatus(GradingStatus status);
+
+    /**
+     * Looks up a recording by the question it belongs to, valid both before submit (attempt is
+     * still null, keyed only by sessionQuestion) and after (attempt now set too).
+     */
+    Optional<VoiceAnswer> findBySessionQuestionId(Long sessionQuestionId);
 }
 

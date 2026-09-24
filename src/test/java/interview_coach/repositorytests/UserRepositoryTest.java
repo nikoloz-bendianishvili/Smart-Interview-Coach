@@ -7,6 +7,8 @@ import interview_coach.InterviewCoachApplication;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 import interview_coach.repositories.UserRepository;
 
@@ -40,9 +42,9 @@ public class UserRepositoryTest {
 
         userRepository.save(u);
 
-        User found = userRepository.findByEmail("alice@example.com");
-        assertThat(found).isNotNull();
-        assertThat(found.getEmail()).isEqualTo("alice@example.com");
+        Optional<User> found = userRepository.findByEmail("alice@example.com");
+        assertThat(found).isPresent();
+        assertThat(found.get().getEmail()).isEqualTo("alice@example.com");
     }
 
     @Test
@@ -64,6 +66,34 @@ public class UserRepositoryTest {
 
         assertThat(exists).isTrue();
         assertThat(notExists).isFalse();
+    }
+
+    @Test
+    void searchByEmailWebNameOrNameFindsPartialCaseInsensitiveMatch() {
+        User u = User.builder()
+                .firstName("Carol")
+                .lastName("Danvers")
+                .webName("cap-marvel")
+                .email("carol@example.com")
+                .passwordHash("hash")
+                .role(Role.USER)
+                .isBanned(false)
+                .build();
+        userRepository.save(u);
+
+        Page<User> byEmail = userRepository
+                .findByEmailContainingIgnoreCaseOrWebNameContainingIgnoreCaseOrFirstNameContainingIgnoreCaseOrLastNameContainingIgnoreCase(
+                        "CAROL", "CAROL", "CAROL", "CAROL", PageRequest.of(0, 10));
+        Page<User> byWebName = userRepository
+                .findByEmailContainingIgnoreCaseOrWebNameContainingIgnoreCaseOrFirstNameContainingIgnoreCaseOrLastNameContainingIgnoreCase(
+                        "marvel", "marvel", "marvel", "marvel", PageRequest.of(0, 10));
+        Page<User> noMatch = userRepository
+                .findByEmailContainingIgnoreCaseOrWebNameContainingIgnoreCaseOrFirstNameContainingIgnoreCaseOrLastNameContainingIgnoreCase(
+                        "nobody", "nobody", "nobody", "nobody", PageRequest.of(0, 10));
+
+        assertThat(byEmail.getContent()).extracting(User::getEmail).contains("carol@example.com");
+        assertThat(byWebName.getContent()).extracting(User::getWebName).contains("cap-marvel");
+        assertThat(noMatch.getContent()).isEmpty();
     }
 }
 

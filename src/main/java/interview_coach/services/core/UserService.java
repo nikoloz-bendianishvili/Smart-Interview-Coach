@@ -2,6 +2,7 @@ package interview_coach.services.core;
 
 import interview_coach.dto.UserUpdateDTO;
 import interview_coach.entities.User;
+import interview_coach.enums.Role;
 import interview_coach.exceptions.EmailAlreadyExistsException;
 import interview_coach.exceptions.InvalidCredentialsException;
 import interview_coach.exceptions.UserNotFoundException;
@@ -10,9 +11,12 @@ import interview_coach.repositories.UserRepository;
 import interview_coach.services.email.EmailService;
 import interview_coach.services.email.VerificationService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 
@@ -76,6 +80,29 @@ public class UserService {
         userRepository.save(user);
     }
 
+    @Transactional
+    public void unbanUser(Long userId) {
+        User user = getUserById(userId);
+        user.setBanned(false);
+        user.setBanExpirationTime(null);
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void changeRole(Long userId, Role role) {
+        User user = getUserById(userId);
+        user.setRole(role);
+        userRepository.save(user);
+    }
+
+    public Page<User> getUsers(String query, Pageable pageable) {
+        if (!StringUtils.hasText(query)) {
+            return userRepository.findAll(pageable);
+        }
+        return userRepository.findByEmailContainingIgnoreCaseOrWebNameContainingIgnoreCaseOrFirstNameContainingIgnoreCaseOrLastNameContainingIgnoreCase(
+                query, query, query, query, pageable);
+    }
+
 
     @Transactional
     public void deleteUser(Long userId) {
@@ -119,14 +146,23 @@ public class UserService {
             user.setTargetRole(updateDTO.targetRole());
         }
 
-        if (updateDTO.password() != null && !updateDTO.password().isEmpty()) {
-            user.setPasswordHash(passwordEncoder.encode(updateDTO.password()));
-        }
         userRepository.save(user);
 
         if (!user.isVerified()) {
             String token = verificationService.createVerificationToken(user);
             emailService.sendVerificationEmail(user.getEmail(), token);
         }
+    }
+
+    @Transactional
+    public void changePassword(Long userId, String currentPassword, String newPassword) {
+        User user = getUserById(userId);
+
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new InvalidCredentialsException("Current password is incorrect");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
     }
 }

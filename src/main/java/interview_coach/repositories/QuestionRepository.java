@@ -2,7 +2,6 @@ package interview_coach.repositories;
 
 import interview_coach.entities.Question;
 import interview_coach.entities.Topic;
-import interview_coach.enums.Difficulty;
 import interview_coach.enums.QuestionType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -16,27 +15,34 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
 
     List<Question> findByTopicId(Long topicId);
 
-    List<Question> findByDifficulty(Difficulty difficulty);
-
     List<Question> findByQuestionType(QuestionType questionType);
 
     List<Question> findByTopicIdAndQuestionType(Long topicId, QuestionType questionType);
 
     long countByTopicIdAndQuestionType(Long topicId, QuestionType questionType);
 
-    @Query(value = "SELECT * FROM questions WHERE topic_id = :topicId AND question_type = :questionType " +
-            "ORDER BY RAND() LIMIT :limit", nativeQuery = true)
-    List<Question> findRandomByTopicAndType(
-            @Param("topicId") Long topicId,
-            @Param("questionType") String questionType,
-            @Param("limit") int limit);
+    long countByTopicIdAndQuestionTypeAndActiveTrue(Long topicId, QuestionType questionType);
 
-    @Query("SELECT AVG(q.timeLimit) FROM Question q WHERE q.questionType = :questionType")
+    long countByTopicId(Long topicId);
+
+    List<Question> findByTopicIdAndActiveTrue(Long topicId);
+
+    List<Question> findByQuestionTypeAndActiveTrue(QuestionType questionType);
+
+    List<Question> findByTopicIdAndQuestionTypeAndActiveTrue(Long topicId, QuestionType questionType);
+
+    @Query(value = "SELECT * FROM questions WHERE topic_id = :topicId AND question_type = :questionType AND active = true " +
+            "ORDER BY RAND() LIMIT :limit", nativeQuery = true)
+    List<Question> findRandomByTopicAndType(@Param("topicId") Long topicId, @Param("questionType") String questionType, @Param("limit") int limit);
+
+    @Query("SELECT AVG(q.timeLimit) FROM Question q WHERE q.questionType = :questionType AND q.active = true")
     Double findAverageTimeLimitByType(@Param("questionType") QuestionType questionType);
 
 
     long countByQuestionType(QuestionType questionType);
 
-    @Query(value = "SELECT * FROM questions WHERE question_type = :questionType ORDER BY RAND() LIMIT :limit", nativeQuery = true)
+    long countByQuestionTypeAndActiveTrue(QuestionType questionType);
+
+    @Query(value = "SELECT * FROM questions WHERE question_type = :questionType AND active = true ORDER BY RAND() LIMIT :limit", nativeQuery = true)
     List<Question> findRandomByType(@Param("questionType") String questionType, @Param("limit") int limit);
 }

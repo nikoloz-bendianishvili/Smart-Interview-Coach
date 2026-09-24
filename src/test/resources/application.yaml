@@ -11,3 +11,44 @@ spring:
   h2:
     console:
       enabled: true
+
+jwt:
+  secret: dGVzdC1zZWNyZXQtdGhhdC1pcy1sb25nLWVub3VnaC1mb3ItaG1hYy1zaGEyNTY=
+  expiration: 86400000
+
+brevo:
+  api:
+    key: test-key
+
+sender: test@example.com
+
+app:
+  frontend:
+    url: http://localhost:8080
+  audio:
+    storage-dir: ./target/test-audio
+  session:
+    time-limit-multiplier:
+      real-interview: 1.10
+      free-mock: 1.50
+      custom-practice: 2.00
+    grace-period-seconds: 30
+    sweep-interval-ms: 60000
+  grading:
+    stale-pending-minutes: 30
+
+judge0:
+  api:
+    url: http://localhost:2358
+    key: test-key
+
+ai:
+  model: claude-sonnet-5
+  api:
+    key: test-key
+
+transcription:
+  model: whisper-1
+  api:
+    url: http://localhost:9999
+    key: test-key

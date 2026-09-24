@@ -50,7 +50,7 @@ public class AttemptRepositoryTest {
 
     @Test
     void saveAndFindByUser() {
-        User u = User.builder().firstName("A").lastName("B").webName("u3").email("u3@example.com").passwordHash("p").role(Role.USER).isActive(true).build();
+        User u = User.builder().firstName("A").lastName("B").webName("u3").email("u3@example.com").passwordHash("p").role(Role.USER).build();
         userRepository.save(u);
 
         Session s = Session.builder()
@@ -76,7 +76,7 @@ public class AttemptRepositoryTest {
         SessionQuestion sq = SessionQuestion.builder().session(s).question(q).orderIndex(1).build();
         sessionQuestionRepository.save(sq);
 
-        Attempt a = Attempt.builder().sessionQuestion(sq).user(u).selectedOption(1).isCorrect(true).score(10).timeTakenSeconds(20).build();
+        Attempt a = Attempt.builder().sessionQuestion(sq).user(u).selectedOption(1).isCorrect(true).score(10).timeTakenSeconds(20).status(AttemptStatus.GRADED).build();
         attemptRepository.save(a);
 
         assertThat(attemptRepository.findByUserId(u.getId())).isNotEmpty();

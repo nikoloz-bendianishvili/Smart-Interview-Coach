@@ -51,14 +51,14 @@ public class CodingChallengeRepositoryTest {
         questionRepository.save(q);
 
         CodingChallenge cc = CodingChallenge.builder()
-                .questionId(q)
+                .question(q)
                 .starterCode("// start")
                 .referenceSolution("// solution")
                 .build();
 
         codingChallengeRepository.save(cc);
 
-        Optional<CodingChallenge> found = codingChallengeRepository.findByQuestionId(q);
+        Optional<CodingChallenge> found = codingChallengeRepository.findByQuestionId(q.getId());
         assertThat(found).isPresent();
     }
 }

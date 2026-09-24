@@ -1,16 +1,37 @@
 package interview_coach.services.core;
 
 import interview_coach.entities.*;
+import interview_coach.enums.AttemptStatus;
 import interview_coach.enums.GradingStatus;
 import interview_coach.enums.QuestionType;
+import interview_coach.enums.SessionStatus;
+import interview_coach.enums.SessionType;
+import interview_coach.events.CodeSubmissionCreatedEvent;
+import interview_coach.events.VoiceAnswerCreatedEvent;
+import interview_coach.events.VoiceAudioSubmittedEvent;
+import interview_coach.exceptions.AttemptAlreadyExistsException;
+import interview_coach.exceptions.AttemptNotFoundException;
+import interview_coach.exceptions.InvalidAudioUploadException;
+import interview_coach.exceptions.InvalidVoiceRecordingStateException;
 import interview_coach.exceptions.OptionNotFoundException;
+import interview_coach.exceptions.QuestionNotYetAvailableException;
+import interview_coach.exceptions.QuestionTypeMismatchException;
+import interview_coach.exceptions.SessionAccessDeniedException;
+import interview_coach.exceptions.SessionAlreadyCompletedException;
 import interview_coach.exceptions.SessionQuestionNotFoundException;
 import interview_coach.repositories.*;
+import interview_coach.services.storage.AudioStorageService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -21,13 +42,21 @@ public class AttemptService {
     private final SessionQuestionRepository sessionQuestionRepository;
     private final CodeSubmissionRepository codeSubmissionRepository;
     private final VoiceAnswerRepository voiceAnswerRepository;
-    private final AiGradingService aiGradingService;
-    private final JudgeService judgeService;
+    private final ApplicationEventPublisher eventPublisher;
+    private final SessionService sessionService;
+    private final AudioStorageService audioStorageService;
+    private final Clock clock;
+
+    /**
+     * Result of {@link #giveUpAttempt}: the recorded (SKIPPED) attempt plus the
+     * explanation text to show the user.
+     */
+    public record GiveUpResult(Attempt attempt, String explanation) {
+    }
 
     @Transactional
     public Attempt submitMCQAttempt(Long sessionQuestionId, User user, Integer selectedOption, int timeTakenSeconds) {
-        SessionQuestion sq = sessionQuestionRepository.findById(sessionQuestionId)
-                .orElseThrow(() -> new SessionQuestionNotFoundException("SessionQuestion not found"));
+        SessionQuestion sq = loadOwnedSessionQuestion(sessionQuestionId, user, QuestionType.MCQ);
         Option option = optionRepository.findByQuestionId(sq.getQuestion().getId())
                 .orElseThrow(() -> new OptionNotFoundException("No options found"));
 
@@ -41,7 +70,7 @@ public class AttemptService {
                 .isCorrect(isCorrect)
                 .score(score)
                 .timeTakenSeconds(timeTakenSeconds)
-                .wasSkipped(false)
+                .status(AttemptStatus.GRADED) // MCQ grades instantly, no async pipeline
                 .build();
 
         return attemptRepository.save(attempt);
@@ -49,14 +78,13 @@ public class AttemptService {
 
     @Transactional
     public Attempt submitCodingAttempt(Long sessionQuestionId, User user, String sourceCode, int timeTakenSeconds) {
-        SessionQuestion sq = sessionQuestionRepository.findById(sessionQuestionId)
-                .orElseThrow(() -> new SessionQuestionNotFoundException("SessionQuestion not found"));
+        SessionQuestion sq = loadOwnedSessionQuestion(sessionQuestionId, user, QuestionType.CODING);
 
         Attempt attempt = Attempt.builder()
                 .sessionQuestion(sq)
                 .user(user)
                 .timeTakenSeconds(timeTakenSeconds)
-                .wasSkipped(false)
+                .status(AttemptStatus.PENDING)
                 .build();
         attemptRepository.save(attempt);
 
@@ -67,66 +95,241 @@ public class AttemptService {
                 .build();
         codeSubmissionRepository.save(submission);
 
-        judgeService.gradeSubmission(submission.getId()); // async — runs Judge0, updates score once done
+        eventPublisher.publishEvent(new CodeSubmissionCreatedEvent(submission.getId()));
 
         return attempt;
     }
 
+    /**
+     * Starts (or restarts) server-side timing for a voice answer, ahead of the actual submit -
+     * the row exists with no Attempt attached until submitOpenEndedAttempt links it. Calling
+     * this again before stop/submit resets the take: startedAt is overwritten and any prior
+     * endedAt is cleared, rather than accumulating separate takes.
+     */
+    @Transactional
+    public void startVoiceRecording(Long sessionQuestionId, User user) {
+        SessionQuestion sq = loadOwnedSessionQuestion(sessionQuestionId, user, QuestionType.OPEN_ENDED);
+
+        VoiceAnswer voiceAnswer = voiceAnswerRepository.findBySessionQuestionId(sessionQuestionId)
+                .orElseGet(() -> VoiceAnswer.builder()
+                        .sessionQuestion(sq)
+                        .gradingStatus(GradingStatus.PENDING)
+                        .build());
+
+        voiceAnswer.setStartedAt(LocalDateTime.now(clock));
+        voiceAnswer.setEndedAt(null);
+        voiceAnswerRepository.save(voiceAnswer);
+    }
+
+    /**
+     * Stops server-side timing for a voice answer started via startVoiceRecording. Rejects a
+     * stop with no matching start, rather than silently recording a nonsensical duration later.
+     */
+    @Transactional
+    public void stopVoiceRecording(Long sessionQuestionId, User user) {
+        loadOwnedSessionQuestion(sessionQuestionId, user, QuestionType.OPEN_ENDED);
+
+        VoiceAnswer voiceAnswer = voiceAnswerRepository.findBySessionQuestionId(sessionQuestionId)
+                .filter(va -> va.getStartedAt() != null)
+                .orElseThrow(() -> new InvalidVoiceRecordingStateException(
+                        "No active voice recording to stop - call start first."));
+
+        voiceAnswer.setEndedAt(LocalDateTime.now(clock));
+        voiceAnswerRepository.save(voiceAnswer);
+    }
+
+    /**
+     * timeTakenSeconds from the caller is used as-is for a plain text open-ended answer (no
+     * voice/start ever called for this question). If a voice recording exists, its
+     * server-recorded startedAt/endedAt are used instead - the client's timeTakenSeconds is
+     * discarded outright, never trusted, exactly per how the rest of this timing feature treats
+     * client-reported time as advisory at best.
+     */
     @Transactional
     public Attempt submitOpenEndedAttempt(Long sessionQuestionId, User user, String answerText, int timeTakenSeconds) {
-        SessionQuestion sq = sessionQuestionRepository.findById(sessionQuestionId)
-                .orElseThrow(() -> new SessionQuestionNotFoundException("SessionQuestion not found"));
+        SessionQuestion sq = loadOwnedSessionQuestion(sessionQuestionId, user, QuestionType.OPEN_ENDED);
 
+        Optional<VoiceAnswer> existingRecording = voiceAnswerRepository.findBySessionQuestionId(sessionQuestionId);
+
+        int effectiveTimeTakenSeconds = timeTakenSeconds;
+        if (existingRecording.isPresent()) {
+            VoiceAnswer recording = existingRecording.get();
+            if (recording.getEndedAt() == null) {
+                throw new InvalidVoiceRecordingStateException(
+                        "Voice recording was started but never stopped - call stop before submitting.");
+            }
+            effectiveTimeTakenSeconds = (int) Duration.between(recording.getStartedAt(), recording.getEndedAt()).getSeconds();
+        }
+
+        Attempt attempt = savePendingAttempt(sq, user, answerText, effectiveTimeTakenSeconds);
+
+        VoiceAnswer voiceAnswer = existingRecording.orElseGet(() -> VoiceAnswer.builder()
+                .sessionQuestion(sq)
+                .gradingStatus(GradingStatus.PENDING)
+                .build());
+        voiceAnswer.setAttempt(attempt);
+        voiceAnswer.setAudioTranscript(answerText);
+        voiceAnswerRepository.save(voiceAnswer);
+
+        eventPublisher.publishEvent(new VoiceAnswerCreatedEvent(voiceAnswer.getId()));
+
+        return attempt;
+    }
+
+    /**
+     * The audio counterpart to submitOpenEndedAttempt: the client uploads the recording itself
+     * (from voice/start + voice/stop) instead of typed text. There's no transcript yet at this
+     * point - TranscriptionService fills audioTranscript (and mirrors it onto
+     * Attempt.textAnswer) asynchronously, then publishes VoiceAnswerCreatedEvent itself so
+     * AiGradingService grades it exactly as it grades a plain-text answer.
+     */
+    @Transactional
+    public Attempt submitVoiceAttempt(Long sessionQuestionId, User user, MultipartFile audio) {
+        SessionQuestion sq = loadOwnedSessionQuestion(sessionQuestionId, user, QuestionType.OPEN_ENDED);
+
+        if (audio == null || audio.isEmpty()) {
+            throw new InvalidAudioUploadException("No audio file was uploaded.");
+        }
+        String contentType = audio.getContentType();
+        if (contentType == null || !contentType.startsWith("audio/")) {
+            throw new InvalidAudioUploadException("Uploaded file is not an audio recording.");
+        }
+
+        VoiceAnswer voiceAnswer = voiceAnswerRepository.findBySessionQuestionId(sessionQuestionId)
+                .filter(va -> va.getStartedAt() != null)
+                .orElseThrow(() -> new InvalidVoiceRecordingStateException(
+                        "No active voice recording to submit - call start (and stop) first."));
+
+        // stop is normally called before submit, but a client that jumps straight from stop-less
+        // recording to submit shouldn't be forced into an extra round trip - treat this as an
+        // implicit stop rather than rejecting it outright.
+        if (voiceAnswer.getEndedAt() == null) {
+            voiceAnswer.setEndedAt(LocalDateTime.now(clock));
+        }
+        int timeTakenSeconds = (int) Duration.between(voiceAnswer.getStartedAt(), voiceAnswer.getEndedAt()).getSeconds();
+
+        Attempt attempt = savePendingAttempt(sq, user, null, timeTakenSeconds);
+
+        String location = audioStorageService.store(sessionQuestionId, audio);
+        voiceAnswer.setAttempt(attempt);
+        voiceAnswer.setAudioFileUrl(location);
+        voiceAnswerRepository.save(voiceAnswer);
+
+        eventPublisher.publishEvent(new VoiceAudioSubmittedEvent(voiceAnswer.getId()));
+
+        return attempt;
+    }
+
+    /**
+     * Builds and saves the PENDING Attempt shared by both the typed-text and audio-upload
+     * open-ended paths - they differ only in what (if anything) is known as textAnswer yet.
+     */
+    private Attempt savePendingAttempt(SessionQuestion sq, User user, String textAnswer, int timeTakenSeconds) {
         Attempt attempt = Attempt.builder()
                 .sessionQuestion(sq)
                 .user(user)
-                .textAnswer(answerText)
+                .textAnswer(textAnswer)
                 .timeTakenSeconds(timeTakenSeconds)
-                .wasSkipped(false)
+                .status(AttemptStatus.PENDING)
                 .build();
-        attemptRepository.save(attempt);
-
-        VoiceAnswer voiceAnswer = VoiceAnswer.builder()
-                .attempt(attempt)
-                .audioTranscript(answerText)
-                .gradingStatus(GradingStatus.PENDING)
-                .build();
-        voiceAnswerRepository.save(voiceAnswer);
-
-        aiGradingService.gradeAnswer(voiceAnswer.getId()); // async — calls AI API, updates score once done
-
-        return attempt;
+        return attemptRepository.save(attempt);
     }
 
     @Transactional
-    public String giveUpAttempt(Long sessionQuestionId, User user) {
-        SessionQuestion sq = sessionQuestionRepository.findById(sessionQuestionId)
-                .orElseThrow(() -> new SessionQuestionNotFoundException("SessionQuestion not found"));
+    public GiveUpResult giveUpAttempt(Long sessionQuestionId, User user) {
+        SessionQuestion sq = loadOwnedSessionQuestion(sessionQuestionId, user, null);
 
         Attempt attempt = Attempt.builder()
                 .sessionQuestion(sq)
                 .user(user)
                 .score(0)
-                .wasSkipped(true)
+                .status(AttemptStatus.SKIPPED)
                 .build();
         attemptRepository.save(attempt);
 
         Question question = sq.getQuestion();
-        if (question.getQuestionType() == QuestionType.CODING) {
-            return question.getExplanation() + "\n\n" + question.getCodingChallenge().getReferenceSolution();
+        SessionType sessionType = sq.getSession().getSessionType();
+
+        String explanation;
+        if (sessionType == SessionType.CUSTOM_PRACTICE) {
+            if (question.getQuestionType() == QuestionType.CODING) {
+                explanation = question.getExplanation() + "\n\n" + question.getCodingChallenge().getReferenceSolution();
+            } else {
+                explanation = question.getExplanation();
+            }
+        } else {
+            explanation = "Answer recorded. You'll see the explanation when the session ends.";
         }
-        return question.getExplanation();
+
+        return new GiveUpResult(attempt, explanation);
+    }
+
+    /**
+     * Loads the attempt behind an id, throwing 404 if it doesn't exist and 403 if it
+     * doesn't belong to {@code user}.
+     */
+    public Attempt getAttemptForUser(Long attemptId, User user) {
+        Attempt attempt = attemptRepository.findById(attemptId)
+                .orElseThrow(() -> new AttemptNotFoundException("Attempt not found"));
+
+        if (!attempt.getUser().getId().equals(user.getId())) {
+            throw new SessionAccessDeniedException("This attempt does not belong to the current user.");
+        }
+
+        return attempt;
     }
 
     public List<Attempt> getAttemptsBySession(Long sessionId) {
         return attemptRepository.findBySessionQuestion_Session_Id(sessionId);
     }
 
-    public List<Attempt> getAttemptsByUser(Long userId) {
-        return attemptRepository.findByUserId(userId);
-    }
+    /**
+     * Loads a SessionQuestion and validates that the caller may submit an attempt
+     * against it: it exists, belongs to {@code user}, its session is still
+     * IN_PROGRESS, it hasn't already been answered, and (unless {@code expectedType}
+     * is null, as for give-up) its question is of the expected type.
+     */
+    private SessionQuestion loadOwnedSessionQuestion(Long sessionQuestionId, User user, QuestionType expectedType) {
+        SessionQuestion sq = sessionQuestionRepository.findById(sessionQuestionId)
+                .orElseThrow(() -> new SessionQuestionNotFoundException("SessionQuestion not found"));
 
-    public List<Attempt> getAttemptsByUserAndTopic(Long userId, Long topicId) {
-        return attemptRepository.findByUserIdAndSessionQuestion_Question_Topic_Id(userId, topicId);
+        if (!sq.getSession().getUser().getId().equals(user.getId())) {
+            throw new SessionAccessDeniedException("This session does not belong to the current user.");
+        }
+
+        // Check-on-access: a session whose deadline has passed gets closed right here, so a
+        // submission arriving after expiry is rejected by the very next check rather than
+        // silently accepted just because the scheduled sweep hasn't run yet.
+        sessionService.closeIfExpired(sq.getSession());
+
+        if (sq.getSession().getStatus() != SessionStatus.IN_PROGRESS) {
+            throw new SessionAlreadyCompletedException("This session is no longer in progress.");
+        }
+
+        if (attemptRepository.existsBySessionQuestionId(sessionQuestionId)) {
+            throw new AttemptAlreadyExistsException("This question has already been answered.");
+        }
+
+        // REAL_INTERVIEW enforces strict in-order answering (no skip-and-return, unlike
+        // FREE_MOCK/CUSTOM_PRACTICE) - applies to give-up too (expectedType == null), not just
+        // scored submissions, since jumping the queue by giving up ahead of time would defeat
+        // the same guarantee.
+        if (sq.getSession().getSessionType() == SessionType.REAL_INTERVIEW) {
+            Long currentId = sessionQuestionRepository
+                    .findFirstBySession_IdAndAttemptIsNullOrderByOrderIndexAsc(sq.getSession().getId())
+                    .map(SessionQuestion::getId)
+                    .orElse(null);
+            if (!sessionQuestionId.equals(currentId)) {
+                throw new QuestionNotYetAvailableException(
+                        "Questions in a Real Interview session must be answered in order.");
+            }
+        }
+
+        if (expectedType != null && sq.getQuestion().getQuestionType() != expectedType) {
+            throw new QuestionTypeMismatchException(
+                    "Expected a " + expectedType + " question but this question is " + sq.getQuestion().getQuestionType());
+        }
+
+        return sq;
     }
 }
